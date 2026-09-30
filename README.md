@@ -145,6 +145,16 @@ pnpm build
 node apps/kimi-code/dist/main.mjs --version
 ```
 
+> **Clone tip:** this is a GitHub fork, so a default clone also pulls upstream's inherited
+> history (~90 MB). If you only want the code, not the 4,000-odd upstream commits, clone the
+> `lite` branch instead — same 4,426 files, single squashed commit, **~27 MB**:
+>
+> ```sh
+> git clone --branch lite --single-branch https://github.com/lacrous/kimi-code-by-lacrous.git
+> ```
+>
+> Both branches have byte-identical content; only the history differs.
+
 For the **official, signed release**, use upstream's installer — it is the maintained
 distribution channel and is unaffected by this fork:
 
@@ -187,6 +197,8 @@ an AI coding agent that runs in your terminal.
 - **Upstream:** Moonshot AI · MIT License · [upstream repo](https://github.com/MoonshotAI/kimi-code) ·
   [upstream issues](https://github.com/MoonshotAI/kimi-code/issues)
 - **Fork base commit:** `21406fb4c`
+- **Branches:** `main` (canonical, full history) · `lite` (same content, squashed to one commit,
+  ~70% smaller clone)
 - **Changes in this fork:** model discovery for hand-written providers, `kimi provider
   add-manual`, `kimi provider add-builtin cline`, and removal of upstream's release/publish
   workflows.
