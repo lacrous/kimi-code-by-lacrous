@@ -20,16 +20,19 @@ import {
   type ImportCustomRegistryResult,
   createKimiHarness,
   DEFAULT_CATALOG_URL,
+  removeProviderFromConfig,
   resolveCatalogImport,
   type Catalog,
   type CatalogProviderEntry,
   type KimiConfig,
   type KimiHarness,
+  type OAuthRef,
 } from '@moonshot-ai/kimi-code-sdk';
 import type { Command } from 'commander';
 
 import { createKimiCodeHostIdentity, createKimiCodeUserAgent } from '#/cli/version';
 import { fetchCatalogOrBuiltIn } from '#/utils/catalog-fetch';
+import { refreshAllProviderModels } from '#/tui/utils/refresh-providers';
 
 interface WritableLike {
   write(chunk: string): boolean;
@@ -45,6 +48,26 @@ export interface ProviderDeps {
 
 interface AddOptions {
   readonly apiKey?: string;
+}
+
+/**
+ * Wire types a hand-written provider may declare. `anthropic` is deliberately
+ * absent: the Anthropic Messages API has no model-list route, so there is
+ * nothing to discover and the models must be written by hand.
+ */
+const MANUAL_PROVIDER_TYPES = ['openai', 'openai_responses', 'kimi'] as const;
+
+type ManualProviderType = (typeof MANUAL_PROVIDER_TYPES)[number];
+
+function isManualProviderType(value: string): value is ManualProviderType {
+  return (MANUAL_PROVIDER_TYPES as readonly string[]).includes(value);
+}
+
+interface AddManualOptions {
+  readonly type: string;
+  readonly baseUrl: string;
+  readonly apiKey?: string;
+  readonly apiKeyEnv?: string;
 }
 
 interface ListOptions {
@@ -116,6 +139,187 @@ export async function handleProviderAdd(
       `provider "${id}" declares credential env var "${envName}" — set api_key_env in config.toml to use it\n`,
     );
   }
+}
+
+/**
+ * Built-in provider shortcuts: a named, first-class way to configure a vendor
+ * whose endpoint and protocol are fixed, without depending on the public
+ * models.dev catalog being reachable at the moment of setup.
+ *
+ * The same vendors are also importable from the catalog
+ * (`kimi provider catalog add cline-pass`); this table is the offline path and
+ * the discoverable label, not a second source of truth for model metadata —
+ * model ids and limits always come from the endpoint itself.
+ */
+const BUILT_IN_PROVIDERS: Readonly<
+  Record<string, { readonly name: string; readonly wire: string; readonly baseUrl: string }>
+> = {
+  cline: {
+    name: 'Cline',
+    wire: 'openai',
+    baseUrl: 'https://api.cline.bot/api/v1',
+  },
+};
+
+export interface AddBuiltinOptions {
+  readonly apiKey?: string;
+  readonly apiKeyEnv?: string;
+}
+
+/**
+ * Configures one of the {@link BUILT_IN_PROVIDERS} and discovers its models,
+ * sharing the discovery path with `add-manual` (both delegate to the engine's
+ * refresh orchestrator rather than reimplementing `/models`).
+ */
+export async function handleProviderAddBuiltin(
+  deps: ProviderDeps,
+  providerId: string,
+  opts: AddBuiltinOptions,
+): Promise<void> {
+  const builtin = BUILT_IN_PROVIDERS[providerId.trim().toLowerCase()];
+  if (builtin === undefined) {
+    deps.stderr.write(
+      `Unknown built-in provider "${providerId}" (known: ${Object.keys(BUILT_IN_PROVIDERS).join(', ')}).\n` +
+        'Run `kimi provider catalog list` to browse all catalog providers.\n',
+    );
+    deps.exit(1);
+  }
+  await handleProviderAddManual(deps, providerId.trim().toLowerCase(), {
+    type: builtin.wire,
+    baseUrl: builtin.baseUrl,
+    apiKey: opts.apiKey,
+    apiKeyEnv: opts.apiKeyEnv,
+  });
+  deps.stdout.write(`${builtin.name} is ready — run /provider in the TUI to pick a default model.\n`);
+}
+
+/**
+ * Adds a provider the user typed in by hand — no registry, no catalog — and
+ * then lets the engine's own refresh read its model list from the endpoint.
+ *
+ * Discovery is delegated rather than reimplemented: the provider record is
+ * written first, and the refresh orchestrator fills `models` from
+ * `{base_url}/models`. That keeps one implementation of the discovery rules
+ * (shared with the TUI's background refresh) instead of a second copy in the
+ * CLI, and means a provider added here refreshes like any other on next start.
+ */
+export async function handleProviderAddManual(
+  deps: ProviderDeps,
+  providerId: string,
+  opts: AddManualOptions,
+): Promise<void> {
+  const id = providerId.trim();
+  if (id.length === 0) {
+    deps.stderr.write('Provider id is required.\n');
+    deps.exit(1);
+  }
+  const wire = opts.type.trim();
+  if (!isManualProviderType(wire)) {
+    deps.stderr.write(
+      `Unsupported --type "${wire}" (expected one of: ${MANUAL_PROVIDER_TYPES.join(', ')}).\n`,
+    );
+    deps.exit(1);
+  }
+  const baseUrl = opts.baseUrl.trim();
+  if (baseUrl.length === 0) {
+    deps.stderr.write('--base-url is required for a manual provider.\n');
+    deps.exit(1);
+  }
+  let parsedBaseUrl: URL;
+  try {
+    parsedBaseUrl = new URL(baseUrl);
+  } catch {
+    deps.stderr.write(`--base-url "${baseUrl}" is not a valid URL.\n`);
+    deps.exit(1);
+  }
+  if (parsedBaseUrl.protocol !== 'http:' && parsedBaseUrl.protocol !== 'https:') {
+    deps.stderr.write(`--base-url must be http(s), got "${parsedBaseUrl.protocol}".\n`);
+    deps.exit(1);
+  }
+  const apiKey = resolveApiKey(opts.apiKey, deps.env);
+  const apiKeyEnv = opts.apiKeyEnv?.trim();
+  if (apiKey !== undefined && apiKeyEnv !== undefined) {
+    deps.stderr.write('Pass either --api-key or --api-key-env, not both.\n');
+    deps.exit(1);
+  }
+  if (apiKey === undefined && apiKeyEnv === undefined) {
+    deps.stderr.write(
+      'A manual provider needs a credential: pass --api-key <key> or --api-key-env <VAR>.\n',
+    );
+    deps.exit(1);
+  }
+
+  const harness = deps.getHarness();
+  await harness.ensureConfigFile();
+  const existing = await harness.getConfig();
+  if (existing.providers[id] !== undefined) {
+    deps.stderr.write(
+      `Provider "${id}" already exists. Remove it first with \`kimi provider remove ${id}\`.\n`,
+    );
+    deps.exit(1);
+  }
+
+  // Replace semantics: setConfig deep-merges and cannot delete a key, so a
+  // re-add over a removed provider's aliases would resurrect stale models.
+  const next = removeProviderFromConfig(existing, id);
+  next.providers = {
+    ...next.providers,
+    [id]: {
+      type: wire,
+      baseUrl,
+      ...(apiKey !== undefined ? { apiKey } : { apiKeyEnv }),
+    },
+  };
+  await harness.setConfig({
+    providers: next.providers,
+    models: next.models,
+    defaultModel: next.defaultModel,
+    thinking: next.thinking,
+  });
+
+  deps.stdout.write(`Added provider "${id}" (type=${wire}, base_url=${baseUrl}).\n`);
+  deps.stdout.write('Discovering models from the endpoint…\n');
+
+  const result = await refreshAllProviderModels(
+    {
+      getConfig: () => harness.getConfig({ reload: true }),
+      removeProvider: (providerIdToRemove) => harness.removeProvider(providerIdToRemove),
+      setConfig: (patch) => harness.setConfig(patch),
+      resolveOAuthToken: async (_providerName: string, oauthRef?: OAuthRef) => {
+        const tokenProvider = harness.auth.resolveOAuthTokenProvider(id, oauthRef);
+        return tokenProvider.getAccessToken();
+      },
+      userAgent: createKimiCodeUserAgent(),
+    },
+    { providerId: id },
+  );
+
+  for (const failure of result.failed) {
+    if (failure.provider === id) {
+      deps.stderr.write(`Model discovery failed: ${failure.reason}\n`);
+      deps.stderr.write(
+        `The provider is saved; add model entries under [models."${id}/…"] in config.toml to use it.\n`,
+      );
+      deps.exit(1);
+    }
+  }
+
+  const models = Object.keys((await harness.getConfig({ reload: true })).models ?? {}).filter((alias) =>
+    alias.startsWith(`${id}/`),
+  );
+  if (models.length === 0) {
+    deps.stderr.write(
+      `The endpoint at ${baseUrl} listed no models. Add model entries under [models."${id}/…"] in config.toml.\n`,
+    );
+    deps.exit(1);
+  }
+  for (const alias of models) {
+    deps.stdout.write(`  - ${alias}\n`);
+  }
+  deps.stdout.write(
+    `\nSet a default with: kimi --model ${models[0]}\n` +
+      `Add more under [models."${id}/…"] in config.toml, or re-run to refresh this list.\n`,
+  );
 }
 
 export async function handleProviderRemove(
@@ -452,6 +656,47 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
     .action(async (url: string, options: { apiKey?: string }) => {
       const resolved = resolveDeps(deps);
       await runAction(resolved, () => handleProviderAdd(resolved, url, { apiKey: options.apiKey }));
+    });
+
+  provider
+    .command('add-manual <providerId>')
+    .description(
+      'Add a provider by hand (protocol + endpoint + key) and discover its models from the endpoint.',
+    )
+    .requiredOption('--type <type>', `Wire protocol: ${MANUAL_PROVIDER_TYPES.join(', ')}.`)
+    .requiredOption('--base-url <url>', 'OpenAI-compatible base URL, e.g. https://host/v1.')
+    .option('--api-key <key>', 'API key. Falls back to KIMI_REGISTRY_API_KEY; omit when using --api-key-env.')
+    .option('--api-key-env <VAR>', 'Read the API key from this environment variable instead of storing it.')
+    .action(
+      async (
+        providerId: string,
+        options: { type: string; baseUrl: string; apiKey?: string; apiKeyEnv?: string },
+      ) => {
+        const resolved = resolveDeps(deps);
+        await runAction(resolved, () =>
+          handleProviderAddManual(resolved, providerId, {
+            type: options.type,
+            baseUrl: options.baseUrl,
+            apiKey: options.apiKey,
+            apiKeyEnv: options.apiKeyEnv,
+          }),
+        );
+      },
+    );
+
+  provider
+    .command('add-builtin <providerId>')
+    .description(`Configure a built-in provider (${Object.keys(BUILT_IN_PROVIDERS).join(', ')}).`)
+    .option('--api-key <key>', 'API key. Falls back to KIMI_REGISTRY_API_KEY; omit when using --api-key-env.')
+    .option('--api-key-env <VAR>', 'Read the API key from this environment variable instead of storing it.')
+    .action(async (providerId: string, options: { apiKey?: string; apiKeyEnv?: string }) => {
+      const resolved = resolveDeps(deps);
+      await runAction(resolved, () =>
+        handleProviderAddBuiltin(resolved, providerId, {
+          apiKey: options.apiKey,
+          apiKeyEnv: options.apiKeyEnv,
+        }),
+      );
     });
 
   provider

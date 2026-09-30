@@ -9,6 +9,11 @@ import {
   type CustomRegistrySource,
 } from './custom-registry';
 import {
+  applyDiscoveredModels,
+  fetchDiscoveredModels,
+  normalizeDiscoveryBaseUrl,
+} from './discover-models';
+import {
   applyManagedApiKeyProviderModels,
   applyManagedKimiCodeConfig,
   fetchManagedKimiCodeModels,
@@ -90,6 +95,50 @@ interface ProviderView {
   readonly oauth?: ManagedKimiOAuthRef;
   readonly source?: unknown;
   readonly env?: unknown;
+}
+
+/**
+ * Provider `type` values that speak the OpenAI-compatible `/models` dialect,
+ * so a hand-written entry can have its model list read from its endpoint. The
+ * Anthropic wire has no equivalent discovery route, so `anthropic` is absent
+ * by design: including it would probe a host that cannot answer.
+ */
+const DISCOVERABLE_PROVIDER_TYPES: ReadonlySet<string> = new Set([
+  'openai',
+  'openai_responses',
+  'kimi',
+]);
+
+/**
+ * Reserved provider id for the synthetic provider the `KIMI_MODEL_*` env
+ * overlay injects. It is not a user record — it is rebuilt on every config
+ * read — so a refresh must neither probe its endpoint nor rewrite it, and its
+ * single model alias must survive discovery untouched.
+ */
+const ENV_OVERLAY_PROVIDER_ID = '__kimi_env__';
+
+/**
+ * True when a provider record is a hand-written OpenAI-compatible entry whose
+ * model list nothing else owns: no OAuth ref, no custom-registry `source`,
+ * and a declared base URL (without one, the endpoint is the vendor default,
+ * which the vendor already documents).
+ *
+ * The managed Kimi Code endpoint is explicitly excluded even though its shape
+ * matches: branch 2.5 already owns every provider pinned to it, and admitting
+ * it here too would fetch and write the same provider twice in one refresh.
+ * The env-overlay provider is excluded for a different reason: it is synthetic
+ * and rebuilt per read, so a write against it would be discarded — and its
+ * alias key (`__kimi_env_model__`) would be deleted as "no longer listed".
+ */
+function isDiscoveryCandidate(provider: ProviderView, providerId: string): boolean {
+  if (provider.oauth !== undefined) return false;
+  if (readCustomRegistrySource(provider) !== undefined) return false;
+  if (isReservedProviderId(providerId) || isOpenPlatformId(providerId)) return false;
+  if (providerId === ENV_OVERLAY_PROVIDER_ID) return false;
+  if (provider.type === undefined || !DISCOVERABLE_PROVIDER_TYPES.has(provider.type)) return false;
+  const baseUrl = nonEmptyString(provider.baseUrl);
+  if (baseUrl === undefined) return false;
+  return !isManagedKimiCodeBaseUrl(baseUrl);
 }
 
 /**
@@ -399,7 +448,11 @@ function pickDefaultModel(
  *     via `GET /models` with the configured API key as Bearer. Only model
  *     aliases are merged; the provider record is user-owned and never
  *     rewritten.
- *  3. Custom registries (models.dev-style, keyed by `provider.source`).
+ *  3. Hand-written OpenAI-compatible providers — any `type` in
+ *     `DISCOVERABLE_PROVIDER_TYPES` with a declared baseUrl and no registry
+ *     source of its own; model list read from `{baseUrl}/models`. As in 2.5,
+ *     only model aliases are rewritten.
+ *  4. Custom registries (models.dev-style, keyed by `provider.source`).
  *
  * Each branch diffs old vs new and only writes when something actually changed
  * (`removeProvider` then `setConfig`). Failures are collected per-provider and
@@ -667,7 +720,79 @@ export async function refreshProviderModels(
   }
 
   // ---------------------------------------------------------------------------
-  // 3. Custom Registry providers (grouped by URL, with API-key candidates)
+  // 3. Hand-written OpenAI-compatible providers (model discovery)
+  // ---------------------------------------------------------------------------
+  // A provider typed by hand into config.toml (`type: 'openai'` + `base_url`,
+  // no registry `source`) has no metadata source of its own, so its model list
+  // is read from `{base_url}/models`. This branch is what makes `model_source
+  // = "discover"` mean something for those entries instead of being an inert
+  // opt-out of the static exclusion above.
+  for (const providerId of Object.keys(config.providers)) {
+    if (targetId !== undefined && targetId !== providerId) continue;
+    const provider = readProvider(config, providerId);
+    if (provider === undefined) continue;
+    if (!isDiscoveryCandidate(provider, providerId)) continue;
+
+    const declared = declaredProviderCredential(provider, providerId);
+    if (declared.kind === 'conflict') {
+      failed.push({ provider: providerId, reason: declared.message });
+      continue;
+    }
+
+    try {
+      // A provider with no credential declared can still host a public
+      // `/models` route; skip only when the endpoint genuinely needs one, so
+      // an unauthenticated local gateway is not silently excluded.
+      const apiKey = resolveProviderApiKey(provider, providerId);
+      const models = await fetchDiscoveredModels({
+        baseUrl: normalizeDiscoveryBaseUrl(provider.baseUrl ?? ''),
+        apiKey,
+        userAgent: host.userAgent,
+      });
+      if (models.length === 0) continue;
+
+      config = await rebaseSelectionAfterFetch(host, config);
+      const aliasPrefix = `${providerId}/`;
+      const next = structuredClone(config);
+      applyDiscoveredModels(next, providerId, models, aliasPrefix);
+      const refreshedAliasKeys = providerRefreshAliasKeys(config, next, providerId, aliasPrefix);
+      restoreProviderAliases(
+        next,
+        preserveUserProviderAliases(config, providerId, refreshedAliasKeys),
+      );
+      restoreDefaultSelection(next, config.defaultModel, config.thinking?.enabled);
+      clampDanglingDefault(next);
+      clearDefaultThinkingWhenDefaultRemoved(next, config.defaultModel);
+
+      if (providerModelsEqual(config, next, providerId, refreshedAliasKeys)) {
+        unchanged.push(providerId);
+        continue;
+      }
+      const { added, removed } = computeChanges(
+        collectModelIdsForAliases(config, refreshedAliasKeys),
+        collectModelIdsForAliases(next, refreshedAliasKeys),
+      );
+      // The provider record itself is user-owned: discovery rewrites only the
+      // model aliases, never the base URL or credential the user typed.
+      await host.removeProvider(providerId);
+      config = await host.setConfig({
+        providers: next.providers,
+        models: next.models,
+        defaultModel: next.defaultModel,
+        thinking: next.thinking,
+        defaultProvider: next['defaultProvider'],
+      });
+      changed.push({ providerId, providerName: providerId, added, removed });
+    } catch (error) {
+      failed.push({
+        provider: providerId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. Custom Registry providers (grouped by URL, with API-key candidates)
   // ---------------------------------------------------------------------------
   const customSources = new Map<
     string,

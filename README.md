@@ -1,126 +1,215 @@
-# Kimi Code CLI
+<div align="center">
 
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Docs](https://img.shields.io/badge/docs-online-blue)](https://moonshotai.github.io/kimi-code/en/) <br>
-[Documentation](https://moonshotai.github.io/kimi-code/en/) · [Issues](https://github.com/MoonshotAI/kimi-code/issues) · [中文](README.zh-CN.md)
+# Kimi Code CLI — lacrous fork
 
-![Demo of using Kimi Code](./docs/media/intro.gif)
+**Bring-your-own-provider builds for Kimi Code CLI.**
 
-## What is Kimi Code CLI
+[![Upstream](https://img.shields.io/badge/upstream-MoonshotAI%2Fkimi--code-8A8A8A?style=flat-square)](https://github.com/MoonshotAI/kimi-code)
+[![License](https://img.shields.io/badge/license-MIT-C06014?style=flat-square)](LICENSE)
+[![Fork of](https://img.shields.io/badge/fork%20of-21406fb4c-8250DF?style=flat-square)](#provenance)
 
-Kimi Code CLI is an AI coding agent that runs in your terminal — it can read and edit code, run shell commands, search files, fetch web pages, and choose the next step based on the feedback it receives. It works out of the box with Moonshot AI’s Kimi models and can also be configured to use other compatible providers.
+A fork of [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code) focused on making
+**any OpenAI-compatible endpoint a first-class provider**, without a registry, without a
+catalog entry, and without hand-writing model metadata.
+
+</div>
+
+---
+
+## What this fork changes
+
+Upstream already supports importing providers from a **custom registry** (`api.json`) and from
+the public **models.dev catalog**. Both require a registry document to exist somewhere. This
+fork adds the missing third path: **you type the endpoint, it discovers the models itself.**
+
+| | Upstream | This fork |
+|---|---|---|
+| Import from `api.json` registry | ✅ | ✅ |
+| Import from models.dev catalog | ✅ | ✅ |
+| **Add a provider by hand** (`--type` + `--base-url` + key) | ❌ | ✅ `kimi provider add-manual` |
+| **Models auto-discovered from the endpoint** | ❌ | ✅ `GET {baseUrl}/models` |
+| **Cline as a built-in** (`kimi provider add-builtin cline`) | ❌ | ✅ |
+
+### `kimi provider add-manual`
+
+Configure any OpenAI-compatible endpoint and discover its models in one step:
+
+```sh
+kimi provider add-manual my-gateway \
+  --type openai \
+  --base-url https://gateway.example.com/v1 \
+  --api-key "$MY_GATEWAY_KEY"
+```
+
+```
+Added provider "my-gateway" (type=openai, base_url=https://gateway.example.com/v1).
+Discovering models from the endpoint…
+  - my-gateway/llama-4-70b
+  - my-gateway/qwen3-max
+  - my-gateway/mistral-large-2
+
+Set a default with: kimi --model my-gateway/llama-4-70b
+```
+
+To keep the key out of `config.toml`, bind it to an environment variable instead:
+
+```sh
+kimi provider add-manual my-gateway \
+  --type openai \
+  --base-url https://gateway.example.com/v1 \
+  --api-key-env MY_GATEWAY_KEY
+```
+
+#### Options
+
+| Flag | Required | Description |
+|---|---|---|
+| `--type <type>` | yes | Wire protocol: `openai`, `openai_responses`, or `kimi` |
+| `--base-url <url>` | yes | Base URL, e.g. `https://gateway.example.com/v1` |
+| `--api-key <key>` | one of | Inline key. Falls back to `KIMI_REGISTRY_API_KEY` |
+| `--api-key-env <VAR>` | one of | Read the key from this environment variable |
+
+`anthropic` is intentionally rejected: the Anthropic Messages API has no model-list route, so
+there is nothing to discover and models must be declared by hand.
+
+**Discovery is best-effort, never silent.** If `{baseUrl}/models` is unreachable or returns
+401, the provider is still saved and the command exits non-zero with instructions for
+declaring models manually. You are never left with a provider that looks configured but
+cannot resolve a model.
+
+### `kimi provider add-builtin cline`
+
+Cline pre-configured — endpoint and protocol already set:
+
+```sh
+kimi provider add-builtin cline --api-key "$CLINE_API_KEY"
+```
+
+This is the same OpenAI-compatible path with the base URL filled in
+(`https://api.cline.bot/api/v1`). Models are still read live from the endpoint, never from a
+hardcoded list, so the provider tracks Cline's current catalog. Cline is also available
+through the catalog path (`kimi provider catalog add cline-pass`) when you prefer upstream's
+metadata.
+
+---
+
+## How discovery works
+
+Upstream's refresh orchestrator had four branches for maintaining a provider's model list:
+managed OAuth, first-party platforms, managed-endpoint API keys, and custom registries. A
+provider you typed in by hand matched none of them — `model_source = "discover"` existed in
+the config schema but no code path ever acted on it.
+
+This fork adds a fifth branch. For any provider with a declared `base_url`, no `oauth`
+reference, and no registry `source`, it fetches `{base_url}/models` and writes one alias per
+model.
+
+**Design decisions worth knowing:**
+
+- **One implementation, not two.** The CLI command does not reimplement discovery — it writes
+  the provider record and delegates to the same engine refresh the TUI uses. A provider added
+  from the CLI refreshes identically to one added from the TUI.
+- **The provider record is user-owned.** Discovery rewrites *only* model aliases. It never
+  touches the `base_url` or the credential you configured.
+- **Declared-but-absent metadata gets conservative defaults.** Many OpenAI-compatible servers
+  return bare `{ id }` rows. Those models still become usable aliases rather than being
+  rejected.
+- **Providers that other branches already own are excluded.** The managed Kimi endpoint and
+  the synthetic `__kimi_env__` provider (injected by the `KIMI_MODEL_*` env overlay) are
+  explicitly skipped, so discovery never double-fetches or clobbers them.
+- **Embedding entries are dropped.** Endpoints routinely mix embedding and fine-tune models
+  into `/models`; those cannot drive a chat turn and are skipped rather than offered.
+
+### Discovery payload shapes accepted
+
+| Endpoint returns | Handling |
+|---|---|
+| `{ "data": [{ "id": "..." }] }` | ✅ OpenAI standard |
+| `[{ "id": "..." }]` | ✅ bare array |
+| `{ "id": "...", "context_length": 200000 }` | context window read from the row |
+| `object: "embedding"` rows | skipped — not usable for chat |
+
+---
 
 ## Install
 
-Install with the official script. No Node.js required.
+This fork is **not published to npm or the VS Code marketplace** — upstream's publishing
+pipelines were intentionally removed from this repository so that nothing attempts to publish
+under your account. Build and run it from source:
 
-- **macOS or Linux**:
+```sh
+git clone https://github.com/lacrous/kimi-code-by-lacrous.git
+cd kimi-code-by-lacrous
+pnpm install
+pnpm build
+node apps/kimi-code/dist/main.mjs --version
+```
+
+For the **official, signed release**, use upstream's installer — it is the maintained
+distribution channel and is unaffected by this fork:
 
 ```sh
 curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
 ```
 
-- **Windows (PowerShell)**:
+Requires Node.js ≥ 24.15.0 and pnpm 10.33.0.
 
-```powershell
-irm https://code.kimi.com/kimi-code/install.ps1 | iex
-```
-
-> On Windows, install [Git for Windows](https://gitforwindows.org/) before first launch because Kimi Code CLI uses the bundled Git Bash as its shell environment. If Git Bash is installed in a custom location, set `KIMI_SHELL_PATH` to the absolute path of `bash.exe`.
-
-Then, run it with a new shell session:
-
-```sh
-kimi --version
-```
-
-For npm install, upgrade, uninstall, see [Getting Started](https://moonshotai.github.io/kimi-code/en/guides/getting-started).
-
-## Quick Start
-
-Open a project and start the interactive UI:
-
-```sh
-cd your-project
-kimi
-```
-
-On first launch, run `/login` inside Kimi Code CLI and choose either Kimi Code OAuth or a Moonshot AI Open Platform API key. After login, try your first task:
-
-```
-Take a look at this project and explain its main directories.
-```
-
-## Key Features
-
-- **Single-binary distribution.** Install with one command: no Node.js setup, PATH gymnastics, or global module conflicts.
-- **Blazing-fast startup.** The TUI is ready in milliseconds, so starting a session never feels heavy.
-- **Purpose-built TUI.** A carefully tuned interface, optimized end to end for long, focused agent sessions.
-- **Video input.** Drop a screen recording or demo clip into the chat and let the agent watch what is hard to describe in words — turn a reference clip into a LUT, a long video into a short, a screen recording into working code, and more.
-- **AI-native MCP configuration.** Add, edit, and authenticate Model Context Protocol servers conversationally with `/mcp-config`, without hand-editing JSON.
-- **Rich plugin ecosystem.** Install skills, MCP servers, and data sources from the marketplace or any GitHub repo, with each install's trust level surfaced up front.
-- **Subagents for focused, parallel work.** Dispatch built-in `coder`, `explore`, and `plan` subagents in isolated contexts while keeping the main conversation clean.
-- **Lifecycle hooks.** Run local commands at key points to gate risky tool calls, audit decisions, trigger desktop notifications, or connect to your own automation.
-- **Editor & IDE integration (ACP).** Drive a Kimi Code CLI session straight from Zed, JetBrains, or any [Agent Client Protocol](https://agentclientprotocol.com/) client with `kimi acp`.
-
-## Use it in your editor (ACP)
-
-Kimi Code CLI speaks the [Agent Client Protocol](https://agentclientprotocol.com/), so ACP-compatible editors and IDEs (Zed, JetBrains, …) can drive a session over stdio. Log in once, then point your editor at the `kimi acp` subcommand — no extra login needed.
-
-For Zed, add this to `~/.config/zed/settings.json`:
-
-```json
-{
-  "agent_servers": {
-    "Kimi Code CLI": {
-      "type": "custom",
-      "command": "kimi",
-      "args": ["acp"],
-      "env": {}
-    }
-  }
-}
-```
-
-Then open a new conversation in Zed's Agent panel. See [Using in IDEs](https://moonshotai.github.io/kimi-code/en/guides/ides) for JetBrains setup and troubleshooting, and the [`kimi acp` reference](https://moonshotai.github.io/kimi-code/en/reference/kimi-acp) for the full capability matrix.
-
-## Docs
-
-- [Getting Started](https://moonshotai.github.io/kimi-code/en/guides/getting-started)
-- [Interaction and approvals](https://moonshotai.github.io/kimi-code/en/guides/interaction)
-- [Sessions](https://moonshotai.github.io/kimi-code/en/guides/sessions)
-- [Using in IDEs (ACP)](https://moonshotai.github.io/kimi-code/en/guides/ides)
-- [Configuration](https://moonshotai.github.io/kimi-code/en/configuration/config-files)
-- [Command reference](https://moonshotai.github.io/kimi-code/en/reference/kimi-command)
+---
 
 ## Develop
 
-Requirements: Node.js ≥ 24.15.0, pnpm 10.33.0.
-
 ```sh
-git clone https://github.com/MoonshotAI/kimi-code.git
-cd kimi-code
-pnpm install
+pnpm dev:cli     # run the CLI in dev mode
+pnpm test        # run tests
+pnpm typecheck   # TypeScript check
+pnpm lint        # oxlint (includes the no-comments guard)
+pnpm build       # build all packages
 ```
 
+Run the provider tests specifically:
+
 ```sh
-pnpm dev:cli    # run the CLI in dev mode
-pnpm test       # run tests
-pnpm typecheck  # TypeScript check
-pnpm lint       # oxlint
-pnpm build      # build all packages
+npx vitest run apps/kimi-code/test/cli/provider.test.ts
+npx vitest run packages/agent-core-v2/test/app/kosongConfig/discovery.test.ts
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide.
+Architecture, coding rules, and contribution guidance live in [AGENTS.md](AGENTS.md) and
+[CONTRIBUTING.md](CONTRIBUTING.md) — both inherited from upstream and still accurate for this
+fork.
 
-## Community
+---
 
-- [Issues](https://github.com/MoonshotAI/kimi-code/issues)
-- For security vulnerabilities, see [SECURITY.md](SECURITY.md).
+## Provenance
+
+This repository is a fork of **[MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code)**,
+an AI coding agent that runs in your terminal.
+
+- **Upstream:** Moonshot AI · MIT License · [upstream repo](https://github.com/MoonshotAI/kimi-code) ·
+  [upstream issues](https://github.com/MoonshotAI/kimi-code/issues)
+- **Fork base commit:** `21406fb4c`
+- **Changes in this fork:** model discovery for hand-written providers, `kimi provider
+  add-manual`, `kimi provider add-builtin cline`, and removal of upstream's release/publish
+  workflows.
+- **This fork is not affiliated with or endorsed by Moonshot AI.** Kimi, Kimi Code, and
+  related names and marks are the property of their respective owner.
+
+All upstream code remains under the MIT License; see [LICENSE](LICENSE). Upstream
+documentation is at
+[moonshotai.github.io/kimi-code](https://moonshotai.github.io/kimi-code/en/).
+
+To pull upstream changes in, add the upstream remote and merge:
+
+```sh
+git remote add upstream https://github.com/MoonshotAI/kimi-code.git
+git fetch upstream && git merge upstream/main
+```
 
 ## Acknowledgements
 
-Our TUI is built on top of [`pi-tui`](https://github.com/earendil-works/pi-mono/tree/main/packages/tui). We thank the authors of `pi-tui` for their valuable work.
+- **Moonshot AI** for Kimi Code CLI, the foundation of this fork.
+- [`pi-tui`](https://github.com/earendil-works/pi-mono/tree/main/packages/tui) — upstream's
+  TUI layer, used under its original license.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+MIT, unchanged from upstream. Copyright (c) 2026 Moonshot AI. See [LICENSE](LICENSE).

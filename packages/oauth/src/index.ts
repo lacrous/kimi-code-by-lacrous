@@ -206,6 +206,17 @@ export type {
 } from './custom-registry';
 
 export {
+  applyDiscoveredModels,
+  DiscoveredModelsAuthError,
+  fetchDiscoveredModels,
+  normalizeDiscoveryBaseUrl,
+} from './discover-models';
+export type {
+  DiscoveredModelInfo,
+  FetchDiscoveredModelsOptions,
+} from './discover-models';
+
+export {
   apiKeyEnvMissingMessage,
   credentialConflictMessage,
   declaredProviderCredential,

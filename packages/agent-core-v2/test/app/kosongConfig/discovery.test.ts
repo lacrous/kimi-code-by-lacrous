@@ -853,6 +853,211 @@ describe('refreshProviderModels defaultModel self-heal', () => {
   });
 });
 
+describe('refreshProviderModels hand-written provider discovery', () => {
+  function stubModelsEndpoint(models: unknown): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(models), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('discovers models for a hand-written openai provider with a base_url', async () => {
+    const fetchMock = stubModelsEndpoint({
+      data: [
+        { id: 'gw-fast', context_length: 200000, supports_tools: true },
+        { id: 'gw-smart', supports_reasoning: true },
+      ],
+    });
+    const { host, discovery, models } = await createHost({
+      providers: {
+        mygw: {
+          type: 'openai',
+          baseUrl: 'https://gw.example.test/v1',
+          apiKey: 'sk-test',
+        },
+      },
+      models: {},
+    });
+    try {
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.changed).toEqual([
+        { provider_id: 'mygw', provider_name: 'mygw', added: 2, removed: 0 },
+      ]);
+      expect(result.failed).toEqual([]);
+      const list = models.list();
+      expect(list['mygw/gw-fast']).toMatchObject({
+        provider: 'mygw',
+        model: 'gw-fast',
+        maxContextSize: 200000,
+      });
+      expect(list['mygw/gw-fast']?.capabilities).toContain('tool_use');
+      expect(list['mygw/gw-smart']?.maxContextSize).toBeGreaterThan(0);
+      expect(list['mygw/gw-smart']?.capabilities).toContain('thinking');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://gw.example.test/v1/models');
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('strips a pasted /chat/completions suffix instead of requesting /models under it', async () => {
+    const fetchMock = stubModelsEndpoint({ data: [{ id: 'm1' }] });
+    const { host, discovery } = await createHost({
+      providers: {
+        mygw: {
+          type: 'openai',
+          baseUrl: 'https://gw.example.test/v1/chat/completions',
+          apiKey: 'sk-test',
+        },
+      },
+      models: {},
+    });
+    try {
+      await discovery.refreshProviderModels({ scope: 'all' });
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://gw.example.test/v1/models');
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('reports an auth failure for one provider without affecting another', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        if (String(input).startsWith('https://gw.example.test')) {
+          return new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ data: [{ id: 'gw-ok' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    const { host, discovery, models } = await createHost({
+      providers: {
+        mygw: { type: 'openai', baseUrl: 'https://gw.example.test/v1', apiKey: 'sk-wrong' },
+        othergw: { type: 'openai', baseUrl: 'https://other.example.test/v1', apiKey: 'sk-ok' },
+      },
+      models: {},
+    });
+    try {
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]).toMatchObject({ provider: 'mygw' });
+      expect(result.failed[0]?.reason).not.toMatch(/oauth/i);
+      expect(result.changed).toEqual([
+        { provider_id: 'othergw', provider_name: 'othergw', added: 1, removed: 0 },
+      ]);
+      expect(models.list()['othergw/gw-ok']).toBeDefined();
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('leaves an anthropic-typed hand-written provider alone', async () => {
+    const fetchMock = stubModelsEndpoint({ data: [{ id: 'claude-x' }] });
+    const { host, discovery, models } = await createHost({
+      providers: {
+        myanth: { type: 'anthropic', baseUrl: 'https://anth.example.test', apiKey: 'sk-ant' },
+      },
+      models: {},
+    });
+    try {
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.changed).toEqual([]);
+      expect(result.failed).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(models.list()['myanth/claude-x']).toBeUndefined();
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('leaves the synthetic env-overlay provider and its alias alone', async () => {
+    const fetchMock = stubModelsEndpoint({ data: [{ id: 'gw-fast' }] });
+    const { host, discovery, models } = await createHost({
+      providers: {
+        __kimi_env__: {
+          type: 'openai',
+          baseUrl: 'https://env.example.test/v1',
+          apiKey: 'sk-env',
+        },
+      },
+      models: {
+        __kimi_env_model__: {
+          provider: '__kimi_env__',
+          model: 'env-model',
+          maxContextSize: 262144,
+        },
+      },
+    });
+    try {
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.changed).toEqual([]);
+      expect(result.failed).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(models.list()['__kimi_env_model__']).toBeDefined();
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('does not re-write an unchanged provider on a second refresh', async () => {
+    stubModelsEndpoint({ data: [{ id: 'gw-fast', context_length: 200000 }] });
+    const { host, discovery } = await createHost({
+      providers: {
+        mygw: { type: 'openai', baseUrl: 'https://gw.example.test/v1', apiKey: 'sk-test' },
+      },
+      models: {},
+    });
+    try {
+      await discovery.refreshProviderModels({ scope: 'all' });
+      const second = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(second.changed).toEqual([]);
+      expect(second.unchanged).toContain('mygw');
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('removes an alias the endpoint stops listing and keeps the default model resolvable', async () => {
+    stubModelsEndpoint({ data: [{ id: 'gw-fast' }, { id: 'gw-smart' }] });
+    const { host, discovery, models } = await createHost({
+      providers: {
+        mygw: { type: 'openai', baseUrl: 'https://gw.example.test/v1', apiKey: 'sk-test' },
+      },
+      models: {},
+      defaultModel: 'mygw/gw-smart',
+    });
+    try {
+      await discovery.refreshProviderModels({ scope: 'all' });
+      expect(models.list()['mygw/gw-smart']).toBeDefined();
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          new Response(JSON.stringify({ data: [{ id: 'gw-fast' }] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      );
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.changed).toEqual([
+        { provider_id: 'mygw', provider_name: 'mygw', added: 0, removed: 1 },
+      ]);
+      expect(models.list()['mygw/gw-smart']).toBeUndefined();
+      expect(models.getDefaultModel()).toBeUndefined();
+    } finally {
+      host.dispose();
+    }
+  });
+});
+
 describe('modelCatalog config section', () => {
   it('self-registers and validates', () => {
     const registry = new ConfigRegistry();

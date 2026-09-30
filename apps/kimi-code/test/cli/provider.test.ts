@@ -19,6 +19,8 @@ import {
   handleCatalogAdd,
   handleCatalogList,
   handleProviderAdd,
+  handleProviderAddBuiltin,
+  handleProviderAddManual,
   handleProviderList,
   handleProviderRemove,
   registerProviderCommand,
@@ -436,6 +438,220 @@ describe('kimi provider add', () => {
         headers: expect.objectContaining({ Authorization: 'Bearer sk-stored' }),
       }),
     );
+  });
+});
+
+describe('kimi provider add-manual', () => {
+  const GW_URL = 'https://gw.example.test/v1';
+
+  function stubModels(data: unknown, status = 200): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        status === 200
+          ? new Response(JSON.stringify({ data }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          : new Response(JSON.stringify({ error: { message: 'nope' } }), { status }),
+      ),
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('writes the provider and discovers its models from the endpoint', async () => {
+    stubModels([
+      { id: 'gw-fast', context_length: 200000 },
+      { id: 'gw-smart' },
+    ]);
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, stdout, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: GW_URL,
+        apiKey: 'sk-test',
+      }),
+    );
+
+    expect(exitCodes).toEqual([]);
+    expect(stderr.join('')).toBe('');
+    expect(current().providers['mygw']).toMatchObject({
+      type: 'openai',
+      baseUrl: GW_URL,
+      apiKey: 'sk-test',
+    });
+    const aliases = Object.keys(current().models ?? {});
+    expect(aliases.toSorted()).toEqual(['mygw/gw-fast', 'mygw/gw-smart']);
+    expect(stdout.join('')).toContain('mygw/gw-fast');
+  });
+
+  it('stores an api_key_env reference instead of the secret', async () => {
+    stubModels([{ id: 'gw-fast' }]);
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps } = makeDeps(harness, { env: { MY_GW_KEY: 'sk-from-env' } });
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: GW_URL,
+        apiKeyEnv: 'MY_GW_KEY',
+      }),
+    );
+
+    expect(current().providers['mygw']).toMatchObject({ apiKeyEnv: 'MY_GW_KEY' });
+    // The secret must never reach config.toml when an env var was requested.
+    expect(JSON.stringify(current().providers['mygw'])).not.toContain('sk-from-env');
+  });
+
+  it('rejects an unsupported wire type', async () => {
+    const { harness } = makeHarness({ providers: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'anthropic',
+        baseUrl: GW_URL,
+        apiKey: 'sk-test',
+      }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('Unsupported --type "anthropic"');
+  });
+
+  it('rejects a non-http base url', async () => {
+    const { harness } = makeHarness({ providers: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: 'file:///etc/passwd',
+        apiKey: 'sk-test',
+      }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('--base-url must be http(s)');
+  });
+
+  it('refuses both an inline key and an env var', async () => {
+    const { harness } = makeHarness({ providers: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness, { env: { MY_GW_KEY: 'sk-env' } });
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: GW_URL,
+        apiKey: 'sk-test',
+        apiKeyEnv: 'MY_GW_KEY',
+      }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('not both');
+  });
+
+  it('refuses to overwrite an existing provider', async () => {
+    const { harness } = makeHarness({
+      providers: { mygw: { type: 'openai', baseUrl: GW_URL, apiKey: 'sk-old' } },
+    } as unknown as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: GW_URL,
+        apiKey: 'sk-new',
+      }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('already exists');
+  });
+
+  it('keeps the provider and explains the manual fallback when discovery fails', async () => {
+    stubModels([], 401);
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: GW_URL,
+        apiKey: 'sk-wrong',
+      }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    // A failed discovery must not silently discard the provider the user asked for.
+    expect(current().providers['mygw']).toBeDefined();
+    expect(stderr.join('')).toContain('Model discovery failed');
+    expect(stderr.join('')).toContain('config.toml');
+  });
+
+  it('reports an endpoint that lists no models', async () => {
+    stubModels([]);
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'mygw', {
+        type: 'openai',
+        baseUrl: GW_URL,
+        apiKey: 'sk-test',
+      }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('listed no models');
+    expect(current().providers['mygw']).toBeDefined();
+  });
+});
+
+describe('kimi provider add-builtin', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('configures the built-in Cline endpoint and discovers its models', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: [{ id: 'anthropic/claude-x' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, stdout, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderAddBuiltin(deps, 'cline', { apiKey: 'sk-test' }));
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['cline']).toMatchObject({
+      type: 'openai',
+      baseUrl: 'https://api.cline.bot/api/v1',
+    });
+    expect(Object.keys(current().models ?? {})).toEqual(['cline/anthropic/claude-x']);
+    expect(stdout.join('')).toContain('Cline is ready');
+  });
+
+  it('rejects an unknown built-in id and points at the catalog', async () => {
+    const { harness } = makeHarness({ providers: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderAddBuiltin(deps, 'nope', { apiKey: 'sk-test' }));
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('Unknown built-in provider "nope"');
+    expect(stderr.join('')).toContain('catalog list');
   });
 });
 
