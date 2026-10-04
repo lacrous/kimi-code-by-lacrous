@@ -32,6 +32,7 @@ import type { Command } from 'commander';
 
 import { createKimiCodeHostIdentity, createKimiCodeUserAgent } from '#/cli/version';
 import { fetchCatalogOrBuiltIn } from '#/utils/catalog-fetch';
+import { BUILT_IN_PROVIDERS, getBuiltInProvider } from '#/utils/built-in-providers';
 import { refreshAllProviderModels } from '#/tui/utils/refresh-providers';
 
 interface WritableLike {
@@ -142,25 +143,10 @@ export async function handleProviderAdd(
 }
 
 /**
- * Built-in provider shortcuts: a named, first-class way to configure a vendor
- * whose endpoint and protocol are fixed, without depending on the public
- * models.dev catalog being reachable at the moment of setup.
- *
- * The same vendors are also importable from the catalog
- * (`kimi provider catalog add cline-pass`); this table is the offline path and
- * the discoverable label, not a second source of truth for model metadata —
- * model ids and limits always come from the endpoint itself.
+ * Built-in provider shortcuts live in `#/utils/built-in-providers` so this CLI
+ * and the TUI `/provider` menu read one table — the endpoint a key is sent to
+ * must never be able to differ between the two surfaces.
  */
-const BUILT_IN_PROVIDERS: Readonly<
-  Record<string, { readonly name: string; readonly wire: string; readonly baseUrl: string }>
-> = {
-  cline: {
-    name: 'Cline',
-    wire: 'openai',
-    baseUrl: 'https://api.cline.bot/api/v1',
-  },
-};
-
 export interface AddBuiltinOptions {
   readonly apiKey?: string;
   readonly apiKeyEnv?: string;
@@ -176,15 +162,16 @@ export async function handleProviderAddBuiltin(
   providerId: string,
   opts: AddBuiltinOptions,
 ): Promise<void> {
-  const builtin = BUILT_IN_PROVIDERS[providerId.trim().toLowerCase()];
+  const id = providerId.trim().toLowerCase();
+  const builtin = getBuiltInProvider(id);
   if (builtin === undefined) {
     deps.stderr.write(
-      `Unknown built-in provider "${providerId}" (known: ${Object.keys(BUILT_IN_PROVIDERS).join(', ')}).\n` +
+      `Unknown built-in provider "${providerId}" (known: ${BUILT_IN_PROVIDERS.map((p) => p.id).join(', ')}).\n` +
         'Run `kimi provider catalog list` to browse all catalog providers.\n',
     );
     deps.exit(1);
   }
-  await handleProviderAddManual(deps, providerId.trim().toLowerCase(), {
+  await handleProviderAddManual(deps, id, {
     type: builtin.wire,
     baseUrl: builtin.baseUrl,
     apiKey: opts.apiKey,

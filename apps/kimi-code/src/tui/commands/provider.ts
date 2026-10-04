@@ -8,13 +8,22 @@ import {
   resolveCatalogImport,
   SECONDARY_DERIVED_MODEL_ALIAS,
   type Catalog,
+  type KimiConfigPatch,
+  type OAuthRef,
   type ThinkingEffort,
 } from '@moonshot-ai/kimi-code-sdk';
 
 import { createKimiCodeUserAgent } from '#/cli/version';
 import { fetchCatalogOrBuiltIn } from '#/utils/catalog-fetch';
+import {
+  BUILT_IN_PROVIDERS,
+  getBuiltInProvider,
+  type BuiltInProvider,
+} from '#/utils/built-in-providers';
+import { refreshAllProviderModels } from '../utils/refresh-providers';
+import type { RefreshProviderHost, RefreshResult } from '../utils/refresh-providers';
 import { refreshKimiRegion } from '#/utils/region';
-import { ChoicePickerComponent } from '../components/dialogs/choice-picker';
+import { ChoicePickerComponent, type ChoiceOption } from '../components/dialogs/choice-picker';
 import {
   CustomRegistryImportDialogComponent,
   type CustomRegistryImportResult,
@@ -39,6 +48,9 @@ import type { SlashCommandHost } from './dispatch';
 // ---------------------------------------------------------------------------
 // /provider command
 // ---------------------------------------------------------------------------
+
+/** Marks a picker row as a built-in vendor; the rest of the value is the vendor id. */
+const BUILTIN_PREFIX = 'builtin:';
 
 export async function handleProviderCommand(host: SlashCommandHost): Promise<void> {
   const options = buildProviderManagerOptions(host);
@@ -118,10 +130,186 @@ async function handleProviderAdd(host: SlashCommandHost): Promise<void> {
     await handleCatalogProviderAdd(host);
     return;
   }
+  if (source !== 'custom') {
+    await handleBuiltinProviderAdd(host, source);
+    return;
+  }
   const handled = await handleCustomRegistryAddViaDialog(host);
   if (!handled) {
     reopenProviderManager(host);
   }
+}
+
+/**
+ * Configures a built-in provider (Cline): ask for the API key, save it, then
+ * read the model list from the vendor endpoint.
+ *
+ * This path deliberately does not go through the models.dev catalog: it works
+ * with no network dependency on models.dev, which is what makes it usable in a
+ * dev build (where the release-time catalog snapshot is absent). Discovery
+ * itself is delegated to the same refresh orchestrator the CLI uses, so the
+ * two surfaces cannot drift.
+ */
+async function handleBuiltinProviderAdd(host: SlashCommandHost, providerId: string): Promise<void> {
+  const builtin = getBuiltInProvider(providerId);
+  if (builtin === undefined) {
+    host.showError(`Unknown built-in provider "${providerId}".`);
+    reopenProviderManager(host);
+    return;
+  }
+
+  const alreadyConfigured = host.state.appState.availableProviders[builtin.id] !== undefined;
+  const apiKey = await promptApiKey(
+    host,
+    builtin.name,
+    [
+      `Get a key at ${builtin.consoleUrl}`,
+      ...(builtin.keyHint === undefined ? [] : [`Keys look like ${builtin.keyHint}…`]),
+      alreadyConfigured
+        ? `Replaces the key currently saved for "${builtin.id}".`
+        : 'Your key will be saved to ~/.kimi-code/config.toml',
+    ],
+  );
+  if (apiKey === undefined) return;
+
+  const controller = new AbortController();
+  const cancel = (): void => {
+    controller.abort();
+  };
+  host.cancelInFlight = cancel;
+
+  // The provider record must exist before discovery: the orchestrator reads
+  // config to decide candidacy and to resolve the credential. A rejected key
+  // is still persisted deliberately — the user can correct it by re-running
+  // this flow, and a bad key is recoverable while a silently missing provider
+  // is indistinguishable from a broken install.
+  await saveBuiltinProvider(host, builtin, apiKey);
+
+  const spinner = host.showLoginProgressSpinner(`Fetching models from ${builtin.baseUrl}`);
+  let discovered: RefreshResult;
+  try {
+    discovered = await refreshAllProviderModels(buildDiscoveryHost(host), {
+      providerId: builtin.id,
+    });
+  } catch (error) {
+    spinner.stop({ ok: false, label: 'Failed to fetch models.' });
+    host.showError(`Fetching models failed: ${formatErrorMessage(error)}`);
+    return;
+  } finally {
+    if (host.cancelInFlight === cancel) host.cancelInFlight = undefined;
+  }
+
+  const failure = discovered.failed.find((f) => f.provider === builtin.id);
+  if (failure !== undefined) {
+    spinner.stop({ ok: false, label: 'Failed to fetch models.' });
+    host.showError(`Fetching models for ${builtin.name} failed: ${failure.reason}`);
+    return;
+  }
+  spinner.stop({
+    ok: true,
+    label:
+      discovered.changed.length > 0
+        ? `${builtin.name} added — ${discovered.changed[0]!.added} model(s) discovered.`
+        : `${builtin.name} is up to date.`,
+  });
+
+  await host.authFlow.refreshConfigAfterLogin();
+
+  // Nothing was discovered (endpoint down, empty list): the provider may still
+  // have been saved, so tell the user what to do rather than silently leaving a
+  // provider that cannot resolve a model.
+  const aliases = Object.keys(host.state.appState.availableModels).filter((alias) =>
+    alias.startsWith(`${builtin.id}/`),
+  );
+  if (aliases.length === 0) {
+    host.showError(
+      `${builtin.name} returned no models. Add them manually under [models."${builtin.id}/…"] in config.toml.`,
+    );
+    return;
+  }
+
+  promptBuiltinModelSelection(host, builtin.id, aliases);
+}
+
+/**
+ * Persistence host for the refresh orchestrator.
+ *
+ * Written for one provider: the orchestrator reads config to decide which
+ * providers are candidates and to resolve credentials, and is scoped to
+ * `providerId` by the caller, so this host stays provider-agnostic.
+ */
+function buildDiscoveryHost(host: SlashCommandHost): RefreshProviderHost {
+  return {
+    getConfig: () => host.harness.getConfig({ reload: true }),
+    removeProvider: (id: string) => host.harness.removeProvider(id),
+    setConfig: (patch: KimiConfigPatch) => host.harness.setConfig(patch),
+    resolveOAuthToken: async (providerName: string, oauthRef?: OAuthRef) => {
+      const tokenProvider = host.harness.auth.resolveOAuthTokenProvider(providerName, oauthRef);
+      return tokenProvider.getAccessToken();
+    },
+    userAgent: createKimiCodeUserAgent(),
+  };
+}
+
+/** Persists a built-in provider with the entered key, replacing any prior record. */
+async function saveBuiltinProvider(
+  host: SlashCommandHost,
+  builtin: BuiltInProvider,
+  apiKey: string,
+): Promise<void> {
+  const config = await host.harness.getConfig();
+  if (config.providers[builtin.id] !== undefined) {
+    await host.harness.removeProvider(builtin.id);
+  }
+  const next = await host.harness.getConfig();
+  next.providers = {
+    ...next.providers,
+    [builtin.id]: { type: builtin.wire, baseUrl: builtin.baseUrl, apiKey },
+  };
+  await host.harness.setConfig({
+    providers: next.providers,
+    models: next.models,
+    defaultModel: next.defaultModel,
+    thinking: next.thinking,
+  });
+}
+
+/**
+ * Picker for choosing the default model out of the freshly discovered list.
+ * Cancelling leaves the provider and its models saved — only the default
+ * selection is skipped.
+ */
+function promptBuiltinModelSelection(
+  host: SlashCommandHost,
+  providerId: string,
+  aliases: readonly string[],
+): void {
+  const selector = new TabbedModelSelectorComponent({
+    models: Object.fromEntries(
+      aliases.map((alias) => [
+        alias,
+        host.state.appState.availableModels[alias] ?? {
+          provider: providerId,
+          model: alias.slice(providerId.length + 1),
+          maxContextSize: 0,
+        },
+      ]),
+    ),
+    currentValue: host.state.appState.model,
+    selectedValue: aliases[0],
+    currentThinkingEffort: host.state.appState.thinkingEffort,
+    initialTabId: providerId,
+    onSelect: ({ alias, thinking }) => {
+      host.restoreEditor();
+      void setDefaultModel(host, alias, thinking).catch((error: unknown) => {
+        host.showError(`Set default model failed: ${formatErrorMessage(error)}`);
+      });
+    },
+    onCancel: () => {
+      host.restoreEditor();
+    },
+  });
+  host.mountEditorReplacement(selector);
 }
 
 function reopenProviderManager(host: SlashCommandHost): void {
@@ -130,19 +318,47 @@ function reopenProviderManager(host: SlashCommandHost): void {
   host.mountEditorReplacement(component);
 }
 
-function promptProviderAddSource(
-  host: SlashCommandHost,
-): Promise<'known' | 'custom' | undefined> {
+/**
+ * Asks what kind of provider to add.
+ *
+ * Returns `'known'` / `'custom'` for the two registry-based paths, or a bare
+ * vendor id (`'cline'`) when a built-in row was chosen — callers dispatch on
+ * that by looking the id up in {@link BUILT_IN_PROVIDERS}. The literals are
+ * documentation only: a bare `string` return keeps that third case type-safe
+ * without a redundant-union lint.
+ */
+function promptProviderAddSource(host: SlashCommandHost): Promise<string | undefined> {
   return new Promise((resolve) => {
+    // Built-in vendors come first: they need no registry and no catalog, so
+    // they work even when models.dev is unreachable (the case a dev build
+    // cannot fall back from — it has no release-time catalog snapshot).
+    //
+    // The row value carries the vendor id directly (`builtin:cline`), so the
+    // selection survives without a second lookup and adding a vendor needs no
+    // change here.
+    const options: ChoiceOption[] = [
+      ...BUILT_IN_PROVIDERS.map((p) => ({
+        value: `builtin:${p.id}`,
+        label: p.name,
+        description: p.description,
+      })),
+      { value: 'known', label: 'Known third-party provider' },
+      { value: 'custom', label: 'Custom registry (api.json)' },
+    ];
     const picker = new ChoicePickerComponent({
       title: 'Add provider',
-      options: [
-        { value: 'known', label: 'Known third-party provider' },
-        { value: 'custom', label: 'Custom registry (api.json)' },
-      ],
+      options,
       onSelect: (value) => {
         host.restoreEditor();
-        resolve(value === 'known' || value === 'custom' ? value : undefined);
+        if (value === 'known' || value === 'custom') {
+          resolve(value);
+          return;
+        }
+        if (value.startsWith(BUILTIN_PREFIX)) {
+          resolve(value.slice(BUILTIN_PREFIX.length));
+          return;
+        }
+        resolve(undefined);
       },
       onCancel: () => {
         host.restoreEditor();

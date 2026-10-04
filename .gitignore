@@ -18,6 +18,8 @@ plugins/cdn/
 .worktrees/
 .kimi-code/local.toml
 .kimi-sandbox/
+# Isolated config home used by scripts/kimi-dev.mjs (the `pnpm run kimi` wrapper).
+.kimi-dev-home/
 .vscode/
 !apps/vscode/.vscode/
 !apps/vscode/.vscode/*.json

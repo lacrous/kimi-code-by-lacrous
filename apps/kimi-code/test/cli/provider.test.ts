@@ -15,6 +15,8 @@ import {
   setModelsDevUpstreamForTest,
 } from '@moonshot-ai/agent-core-v2/app/kosongConfig/modelsDevUpstream';
 
+import { BUILT_IN_PROVIDERS } from '#/utils/built-in-providers';
+
 import {
   handleCatalogAdd,
   handleCatalogList,
@@ -641,6 +643,49 @@ describe('kimi provider add-builtin', () => {
     });
     expect(Object.keys(current().models ?? {})).toEqual(['cline/anthropic/claude-x']);
     expect(stdout.join('')).toContain('Cline is ready');
+  });
+
+  it('configures every built-in vendor from the shared table', async () => {
+    // Each vendor gets its own throwaway home so one config does not leak
+    // providers into the next case.
+    for (const builtin of BUILT_IN_PROVIDERS) {
+      // Typed as `(...args: unknown[])` so the assertion below can read the
+      // request URL out of the recorded call.
+      const fetchMock = vi.fn(async (..._args: unknown[]) =>
+        new Response(JSON.stringify({ data: [{ id: 'vendor/model-a' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+      const { deps, exitCodes } = makeDeps(harness);
+
+      await tryRun(() => handleProviderAddBuiltin(deps, builtin.id, { apiKey: 'sk-test' }));
+
+      expect(exitCodes, `${builtin.id} exited non-zero`).toEqual([]);
+      expect(current().providers[builtin.id], `${builtin.id} not written`).toMatchObject({
+        type: builtin.wire,
+        baseUrl: builtin.baseUrl,
+      });
+      expect(
+        Object.keys(current().models ?? {}),
+        `${builtin.id} discovered no models`,
+      ).toEqual([`${builtin.id}/vendor/model-a`]);
+      // The models request must go to this vendor's own endpoint.
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${builtin.baseUrl}/models`);
+    }
+  });
+
+  it('keeps one entry per vendor with no duplicate ids or endpoints', () => {
+    const ids = BUILT_IN_PROVIDERS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const p of BUILT_IN_PROVIDERS) {
+      // A wrong base URL silently sends the user's key to another host.
+      expect(p.baseUrl, `${p.id} baseUrl must be https`).toMatch(/^https:\/\//);
+      expect(p.baseUrl, `${p.id} baseUrl must be absolute`).toContain('/v1');
+      expect(p.wire, `${p.id} wire must be a known protocol`).toBe('openai');
+    }
   });
 
   it('rejects an unknown built-in id and points at the catalog', async () => {

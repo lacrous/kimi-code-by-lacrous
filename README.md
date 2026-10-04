@@ -28,7 +28,32 @@ fork adds the missing third path: **you type the endpoint, it discovers the mode
 | Import from models.dev catalog | ✅ | ✅ |
 | **Add a provider by hand** (`--type` + `--base-url` + key) | ❌ | ✅ `kimi provider add-manual` |
 | **Models auto-discovered from the endpoint** | ❌ | ✅ `GET {baseUrl}/models` |
-| **Cline as a built-in** (`kimi provider add-builtin cline`) | ❌ | ✅ |
+| **Built-in vendors** (Cline, OpenRouter, OpenCode Zen, OpenCode Go, NVIDIA, NaraRouter, Token Harbor) | ❌ | ✅ `kimi provider add-builtin <id>` |
+| **Pick a provider in the TUI** (`/provider` → Add provider) | ❌ | ✅ asks for the key, discovers models, picks a default |
+
+The same flow is available in both places — `/provider` → **Add provider** → pick a
+vendor, or from the command line with `kimi provider add-builtin <id>`.
+
+### Built-in providers
+
+| Id | Vendor | Endpoint | Key prefix |
+|---|---|---|---|
+| `cline` | Cline | `https://api.cline.bot/api/v1` | — |
+| `openrouter` | OpenRouter | `https://openrouter.ai/api/v1` | — |
+| `opencode-zen` | OpenCode Zen | `https://opencode.ai/zen/v1` | — |
+| `opencode-go` | OpenCode Go | `https://opencode.ai/zen/go/v1` | — |
+| `nvidia` | NVIDIA | `https://integrate.api.nvidia.com/v1` | `nvapi-` |
+| `nara` | NaraRouter | `https://router.bynara.id/v1` | `sk-nry-` |
+| `tokenharbor` | Token Harbor | `https://tokenharbor.ai/v1` | `thk_live_` |
+
+Built-ins skip the models.dev catalog entirely, so they work when models.dev is unreachable —
+which is the case in a dev build, since the release-time catalog snapshot is not present.
+
+> **One caveat on model discovery.** `/models` returns model ids and little else, and cannot
+> express a *per-model protocol*. OpenCode Zen serves part of its catalog over the Anthropic
+> Messages API; models.dev marks those models, but a plain `/models` fetch cannot see it. Those
+> models are listed and may fail on first use. Import Zen from the catalog
+> (`kimi provider catalog add opencode`) if you need the per-model protocol honored.
 
 ### `kimi provider add-manual`
 
@@ -77,19 +102,23 @@ there is nothing to discover and models must be declared by hand.
 declaring models manually. You are never left with a provider that looks configured but
 cannot resolve a model.
 
-### `kimi provider add-builtin cline`
+### `kimi provider add-builtin <id>`
 
-Cline pre-configured — endpoint and protocol already set:
+Configure any built-in vendor non-interactively — endpoint and protocol already set:
 
 ```sh
 kimi provider add-builtin cline --api-key "$CLINE_API_KEY"
+kimi provider add-builtin openrouter --api-key "$OPENROUTER_API_KEY"
+kimi provider add-builtin nvidia --api-key-env NVIDIA_API_KEY
 ```
 
-This is the same OpenAI-compatible path with the base URL filled in
-(`https://api.cline.bot/api/v1`). Models are still read live from the endpoint, never from a
-hardcoded list, so the provider tracks Cline's current catalog. Cline is also available
-through the catalog path (`kimi provider catalog add cline-pass`) when you prefer upstream's
-metadata.
+`--api-key-env` keeps the key out of `config.toml`; the value is read from that environment
+variable at request time.
+
+Models are always read live from the vendor's `/models` route, never from a hardcoded list, so
+a built-in tracks the vendor's current catalog. Several of these vendors are also importable
+from the models.dev catalog (`kimi provider catalog add openrouter`, `... add nvidia`), which is
+worth preferring when you want the catalog's richer per-model metadata.
 
 ---
 
@@ -169,11 +198,21 @@ Requires Node.js ≥ 24.15.0 and pnpm 10.33.0.
 ## Develop
 
 ```sh
-pnpm dev:cli     # run the CLI in dev mode
-pnpm test        # run tests
-pnpm typecheck   # TypeScript check
-pnpm lint        # oxlint (includes the no-comments guard)
-pnpm build       # build all packages
+pnpm kimi          # run THIS checkout's CLI (not an installed binary)
+pnpm dev:cli       # run the CLI in dev mode
+pnpm test          # run tests
+pnpm typecheck     # TypeScript check
+pnpm lint          # oxlint (includes the no-comments guard)
+pnpm build         # build all packages
+```
+
+`pnpm run kimi -- provider list` and `pnpm run kimi` (interactive) run the code in this
+checkout. It sets `KIMI_CODE_HOME` to a repo-local `.kimi-dev-home/`, so a dev run never reads
+or writes an installed `kimi`'s config at `~/.kimi-code/`. Override it to share that config
+instead:
+
+```sh
+KIMI_CODE_HOME="$HOME/.kimi-code" pnpm run kimi -- provider list
 ```
 
 Run the provider tests specifically:
