@@ -180,7 +180,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
     const selectedIdx = choices.findIndex((choice) => choice.alias === selectedValue);
     this.list = new SearchableList({
       items: choices,
-      toSearchText: (choice) => choice.label,
+      // Search over the full alias and model id as well as the label: a
+      // gateway's ids are the only reliable handle (`openai/gpt-4o-mini`,
+      // `Qwen/Qwen3-8B`), and a display name is often an empty or prettified
+      // stand-in — searching the label alone would miss a pasted model id.
+      toSearchText: (choice) =>
+        `${choice.label} ${choice.alias} ${choice.model.model} ${choice.model.displayName ?? ''}`,
       pageSize: opts.pageSize,
       initialIndex: Math.max(selectedIdx, 0),
       searchable: opts.searchable === true,

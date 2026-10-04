@@ -958,20 +958,21 @@ describe('refreshProviderModels hand-written provider discovery', () => {
     }
   });
 
-  it('leaves an anthropic-typed hand-written provider alone', async () => {
+  it('discovers models for an anthropic-typed provider via /v1/models', async () => {
     const fetchMock = stubModelsEndpoint({ data: [{ id: 'claude-x' }] });
     const { host, discovery, models } = await createHost({
       providers: {
-        myanth: { type: 'anthropic', baseUrl: 'https://anth.example.test', apiKey: 'sk-ant' },
+        myanth: { type: 'anthropic', baseUrl: 'https://anth.example.test', apiKey: 'sk-ant-x' },
       },
       models: {},
     });
     try {
       const result = await discovery.refreshProviderModels({ scope: 'all' });
-      expect(result.changed).toEqual([]);
-      expect(result.failed).toEqual([]);
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(models.list()['myanth/claude-x']).toBeUndefined();
+      expect(result.changed).toEqual([
+        { provider_id: 'myanth', provider_name: 'myanth', added: 1, removed: 0 },
+      ]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://anth.example.test/v1/models');
+      expect(models.list()['myanth/claude-x']).toBeDefined();
     } finally {
       host.dispose();
     }

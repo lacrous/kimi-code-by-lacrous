@@ -2,6 +2,8 @@
  * Built-in provider shortcuts: vendors whose protocol and endpoint are fixed,
  * configurable without consulting the models.dev catalog.
  *
+ * Author: lacrous (fork of MoonshotAI/kimi-code).
+ *
  * Shared by the CLI (`kimi provider add-builtin`) and the TUI `/provider`
  * menu. Kept at app level (`src/utils`, not `src/tui/utils`) because neither
  * surface owns it — it is pure data with no TUI-state dependency.
@@ -41,6 +43,14 @@ export interface BuiltInProvider {
    * rejecting a valid key would be worse than a missing hint.
    */
   readonly keyHint?: string;
+  /**
+   * Auth style the vendor's `/models` route expects. Defaults to Bearer, which
+   * covers every OpenAI-compatible endpoint. Anthropic (`x-api-key` plus
+   * `anthropic-version`) and Google (`x-goog-api-key`) are the exceptions —
+   * sending them a Bearer header returns a 401 indistinguishable from a bad
+   * key, so the style must be declared rather than guessed.
+   */
+  readonly authStyle?: 'bearer' | 'x-api-key' | 'x-goog-api-key';
 }
 
 export const BUILT_IN_PROVIDERS: readonly BuiltInProvider[] = [
@@ -102,6 +112,96 @@ export const BUILT_IN_PROVIDERS: readonly BuiltInProvider[] = [
     description: 'One universal key for many AI providers',
     consoleUrl: 'https://tokenharbor.ai/dashboard/api-keys',
     keyHint: 'thk_live_',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    wire: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    description: 'GPT, o-series and Codex models',
+    consoleUrl: 'https://platform.openai.com/api-keys',
+    keyHint: 'sk-',
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    wire: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    description: 'Claude models',
+    consoleUrl: 'https://console.anthropic.com/settings/keys',
+    keyHint: 'sk-ant-',
+    authStyle: 'x-api-key',
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    wire: 'google-genai',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    description: 'Gemini models',
+    consoleUrl: 'https://aistudio.google.com/apikey',
+    keyHint: 'AIza',
+    authStyle: 'x-goog-api-key',
+  },
+  {
+    id: 'grok',
+    name: 'xAI Grok',
+    wire: 'openai',
+    baseUrl: 'https://api.x.ai/v1',
+    description: 'Grok models',
+    consoleUrl: 'https://console.x.ai',
+    keyHint: 'xai-',
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    wire: 'openai',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    description: 'Fast open models on Groq hardware',
+    consoleUrl: 'https://console.groq.com/keys',
+    keyHint: 'gsk_',
+  },
+  {
+    id: 'qwen',
+    name: 'Qwen',
+    wire: 'openai',
+    baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    description: 'Alibaba Qwen models',
+    consoleUrl: 'https://bailian.console.alibabacloud.com/',
+    keyHint: 'sk-',
+  },
+  {
+    id: 'minimax',
+    name: 'MiniMax',
+    wire: 'openai',
+    baseUrl: 'https://api.minimax.io/v1',
+    description: 'MiniMax models',
+    consoleUrl: 'https://platform.minimax.io/user-center/basic-information/interface-key',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    wire: 'openai',
+    baseUrl: 'https://api.deepseek.com',
+    description: 'DeepSeek chat and reasoning models',
+    consoleUrl: 'https://platform.deepseek.com/api_keys',
+    keyHint: 'sk-',
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    wire: 'openai',
+    baseUrl: 'https://api.mistral.ai/v1',
+    description: 'Mistral and Magistral models',
+    consoleUrl: 'https://console.mistral.ai/api-keys',
+  },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    wire: 'openai',
+    baseUrl: 'https://router.huggingface.co/v1',
+    description: 'Open models via the Hugging Face router',
+    consoleUrl: 'https://huggingface.co/settings/tokens',
+    keyHint: 'hf_',
   },
 ];
 

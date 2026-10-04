@@ -52,11 +52,21 @@ interface AddOptions {
 }
 
 /**
- * Wire types a hand-written provider may declare. `anthropic` is deliberately
- * absent: the Anthropic Messages API has no model-list route, so there is
- * nothing to discover and the models must be written by hand.
+ * Wire types `kimi provider add-manual` may declare.
+ *
+ * `anthropic` and `google-genai` are accepted because both vendors do expose a
+ * model-list route (`GET /v1/models` with `x-api-key` + `anthropic-version`;
+ * `GET /v1beta/models` with `x-goog-api-key`), and the discovery branch handles
+ * each one's auth style and response shape. A hand-written provider pointing at
+ * any other host on these wires can still declare models by hand.
  */
-const MANUAL_PROVIDER_TYPES = ['openai', 'openai_responses', 'kimi'] as const;
+const MANUAL_PROVIDER_TYPES = [
+  'openai',
+  'openai_responses',
+  'kimi',
+  'anthropic',
+  'google-genai',
+] as const;
 
 type ManualProviderType = (typeof MANUAL_PROVIDER_TYPES)[number];
 
@@ -69,6 +79,145 @@ interface AddManualOptions {
   readonly baseUrl: string;
   readonly apiKey?: string;
   readonly apiKeyEnv?: string;
+}
+
+export interface EditOptions {
+  readonly type?: string;
+  readonly baseUrl?: string;
+  readonly apiKey?: string;
+  readonly apiKeyEnv?: string;
+  /** Re-read the model list after applying the change. Defaults to true. */
+  readonly refresh?: boolean;
+}
+
+/**
+ * Changes an already-configured provider's protocol, endpoint or credential.
+ *
+ * Editing in place (rather than remove-then-add) keeps the provider's existing
+ * model aliases and, crucially, the user's `default_model`: removing the
+ * provider would drop both and silently repoint the next session. Only the
+ * fields named on the command line are touched.
+ */
+export async function handleProviderEdit(
+  deps: ProviderDeps,
+  providerId: string,
+  opts: EditOptions,
+): Promise<void> {
+  const id = providerId.trim();
+  const harness = deps.getHarness();
+  await harness.ensureConfigFile();
+  const config = await harness.getConfig();
+  const existing = config.providers[id];
+  if (existing === undefined) {
+    const known = Object.keys(config.providers).toSorted();
+    deps.stderr.write(
+      `Provider "${id}" not found.` +
+        (known.length > 0 ? `\nConfigured providers:\n${known.map((p) => `  - ${p}\n`).join('')}` : ''),
+    );
+    deps.exit(1);
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (opts.type !== undefined) {
+    const wire = opts.type.trim();
+    if (!isManualProviderType(wire)) {
+      deps.stderr.write(
+        `Unsupported --type "${wire}" (expected one of: ${MANUAL_PROVIDER_TYPES.join(', ')}).\n`,
+      );
+      deps.exit(1);
+    }
+    patch['type'] = wire;
+  }
+  if (opts.baseUrl !== undefined) {
+    const baseUrl = opts.baseUrl.trim();
+    if (baseUrl.length === 0) {
+      deps.stderr.write('--base-url cannot be empty. Omit the flag to keep the current value.\n');
+      deps.exit(1);
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(baseUrl);
+    } catch {
+      deps.stderr.write(`--base-url "${baseUrl}" is not a valid URL.\n`);
+      deps.exit(1);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      deps.stderr.write(`--base-url must be http(s), got "${parsed.protocol}".\n`);
+      deps.exit(1);
+    }
+    patch['baseUrl'] = baseUrl;
+  }
+
+  // Credential handling mirrors the config schema's mutual exclusion: an
+  // inline key replaces an env reference and vice versa, because the runtime
+  // rejects a record carrying both.
+  const inline = resolveApiKey(opts.apiKey, deps.env);
+  const envName = opts.apiKeyEnv?.trim();
+  if (inline !== undefined && envName !== undefined) {
+    deps.stderr.write('Pass either --api-key or --api-key-env, not both.\n');
+    deps.exit(1);
+  }
+  if (inline !== undefined) {
+    patch['apiKey'] = inline;
+    delete patch['apiKeyEnv'];
+  } else if (envName !== undefined) {
+    if (envName.length === 0) {
+      deps.stderr.write('--api-key-env cannot be empty.\n');
+      deps.exit(1);
+    }
+    patch['apiKeyEnv'] = envName;
+    delete patch['apiKey'];
+  }
+
+  if (Object.keys(patch).length === 0) {
+    deps.stderr.write(
+      'Nothing to change. Pass --type, --base-url, --api-key or --api-key-env.\n',
+    );
+    deps.exit(1);
+  }
+
+  // A spread cannot delete: `{ ...existing, apiKeyEnv }` would leave the old
+  // inline `apiKey` in place, and the runtime rejects a record carrying both.
+  // So the credential is rebuilt explicitly from whichever side won.
+  const merged: Record<string, unknown> = { ...existing, ...patch };
+  if (inline !== undefined) delete merged['apiKeyEnv'];
+  if (envName !== undefined) delete merged['apiKey'];
+  config.providers[id] = merged as KimiConfig['providers'][string];
+  await harness.setConfig({ providers: config.providers });
+  deps.stdout.write(`Updated "${id}": ${Object.keys(patch).join(', ')}.\n`);
+
+  if (opts.refresh === false) {
+    deps.stdout.write('Skipped model refresh (--no-refresh).\n');
+    return;
+  }
+
+  deps.stdout.write('Refreshing models from the endpoint…\n');
+  const result = await refreshAllProviderModels(
+    {
+      getConfig: () => harness.getConfig({ reload: true }),
+      removeProvider: (target: string) => harness.removeProvider(target),
+      setConfig: (next) => harness.setConfig(next),
+      resolveOAuthToken: async (_providerName: string, oauthRef?: OAuthRef) => {
+        const tokenProvider = harness.auth.resolveOAuthTokenProvider(id, oauthRef);
+        return tokenProvider.getAccessToken();
+      },
+      userAgent: createKimiCodeUserAgent(),
+    },
+    { providerId: id },
+  );
+
+  const failure = result.failed.find((f) => f.provider === id);
+  if (failure !== undefined) {
+    deps.stderr.write(`Model refresh failed: ${failure.reason}\n`);
+    deps.stderr.write('The change was saved; existing models are left untouched.\n');
+    deps.exit(1);
+  }
+  const change = result.changed.find((c) => c.providerId === id);
+  deps.stdout.write(
+    change === undefined
+      ? 'Model list unchanged.\n'
+      : `Models refreshed: +${String(change.added)} added, ${String(change.removed)} removed.\n`,
+  );
 }
 
 interface ListOptions {
@@ -685,6 +834,43 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
         }),
       );
     });
+
+  provider
+    .command('edit <providerId>')
+    .description(
+      'Change an existing provider\'s protocol, endpoint or key, then refresh its models.',
+    )
+    .option('--type <type>', `New wire protocol: ${MANUAL_PROVIDER_TYPES.join(', ')}.`)
+    .option('--base-url <url>', 'New OpenAI-compatible base URL.')
+    .option('--api-key <key>', 'New API key. Falls back to KIMI_REGISTRY_API_KEY.')
+    .option('--api-key-env <VAR>', 'Read the key from this environment variable instead of storing it.')
+    // No explicit default: commander's `--no-x` sets `x` to false only when the
+    // flag is given, so the value must be left undefined or it would read
+    // `false` on every invocation and silently skip the refresh.
+    .option('--no-refresh', 'Apply the change without re-reading the model list.')
+    .action(
+      async (
+        providerId: string,
+        options: {
+          type?: string;
+          baseUrl?: string;
+          apiKey?: string;
+          apiKeyEnv?: string;
+          refresh?: boolean;
+        },
+      ) => {
+        const resolved = resolveDeps(deps);
+        await runAction(resolved, () =>
+          handleProviderEdit(resolved, providerId, {
+            type: options.type,
+            baseUrl: options.baseUrl,
+            apiKey: options.apiKey,
+            apiKeyEnv: options.apiKeyEnv,
+            refresh: options.refresh !== false,
+          }),
+        );
+      },
+    );
 
   provider
     .command('remove <providerId>')

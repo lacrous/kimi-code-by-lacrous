@@ -2,6 +2,8 @@
 /**
  * Runs the Kimi Code CLI from this checkout instead of an installed binary.
  *
+ * Author: lacrous (fork of MoonshotAI/kimi-code).
+ *
  * Why a wrapper script rather than a plain package.json script: pnpm forwards
  * the `--` separator as a literal argument, so `pnpm run kimi -- provider list`
  * would hand the CLI `--` as its first argument and it would fail on an

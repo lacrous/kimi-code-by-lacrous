@@ -7,7 +7,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 import type { KimiConfig, KimiHarness } from '@moonshot-ai/kimi-code-sdk';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -23,6 +23,7 @@ import {
   handleProviderAdd,
   handleProviderAddBuiltin,
   handleProviderAddManual,
+  handleProviderEdit,
   handleProviderList,
   handleProviderRemove,
   registerProviderCommand,
@@ -510,20 +511,44 @@ describe('kimi provider add-manual', () => {
     expect(JSON.stringify(current().providers['mygw'])).not.toContain('sk-from-env');
   });
 
-  it('rejects an unsupported wire type', async () => {
+  it('rejects a wire type the config schema does not define', async () => {
     const { harness } = makeHarness({ providers: {} } as KimiConfig);
     const { deps, stderr, exitCodes } = makeDeps(harness);
 
+    // `cohere` is not a wire in the config schema at all, so it must be
+    // refused before anything reaches disk.
     await tryRun(() =>
       handleProviderAddManual(deps, 'mygw', {
-        type: 'anthropic',
+        type: 'cohere',
         baseUrl: GW_URL,
         apiKey: 'sk-test',
       }),
     );
 
     expect(exitCodes).toEqual([1]);
-    expect(stderr.join('')).toContain('Unsupported --type "anthropic"');
+    expect(stderr.join('')).toContain('Unsupported --type "cohere"');
+  });
+
+  it('accepts the anthropic wire, whose /models route uses x-api-key', async () => {
+    stubModels([{ id: 'claude-x' }]);
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderAddManual(deps, 'myanth', {
+        type: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        apiKey: 'sk-ant-test',
+      }),
+    );
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['myanth']).toMatchObject({ type: 'anthropic' });
+    // The probe must hit /v1/models, not the bare host the chat path uses.
+    const probed = vi.mocked(fetch).mock.calls.at(-1)?.[0];
+    expect(typeof probed === 'string' ? probed : '').toBe(
+      'https://api.anthropic.com/v1/models',
+    );
   });
 
   it('rejects a non-http base url', async () => {
@@ -672,9 +697,29 @@ describe('kimi provider add-builtin', () => {
         Object.keys(current().models ?? {}),
         `${builtin.id} discovered no models`,
       ).toEqual([`${builtin.id}/vendor/model-a`]);
-      // The models request must go to this vendor's own endpoint.
-      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${builtin.baseUrl}/models`);
+      // The probe must go to this vendor's own endpoint, and must honour the
+      // wire's version convention: the Anthropic wire's chat base is a bare
+      // host, so its model list needs the `/v1` segment re-added.
+      const expected =
+        builtin.wire === 'anthropic' ? `${builtin.baseUrl}/v1/models` : `${builtin.baseUrl}/models`;
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(expected);
     }
+  });
+
+  it('documents every vendor in the README table', async () => {
+    const readme = await readFile(new URL('../../../../README.md', import.meta.url), 'utf8');
+
+    // The README carried a stale seven-vendor table for a while, so the table in
+    // code is the source of truth and the docs are pinned to it.
+    for (const builtin of BUILT_IN_PROVIDERS) {
+      expect(readme, `${builtin.id} missing from README`).toContain(
+        `| \`${builtin.id}\` | ${builtin.name} | \`${builtin.baseUrl}\` |`,
+      );
+    }
+    const documented = readme.match(/^\| `[a-z0-9-]+` \| [^|]+ \| `[^`]+` \|/gm) ?? [];
+    expect(documented, 'README lists a vendor the table does not define').toHaveLength(
+      BUILT_IN_PROVIDERS.length,
+    );
   });
 
   it('keeps one entry per vendor with no duplicate ids or endpoints', () => {
@@ -683,9 +728,27 @@ describe('kimi provider add-builtin', () => {
     for (const p of BUILT_IN_PROVIDERS) {
       // A wrong base URL silently sends the user's key to another host.
       expect(p.baseUrl, `${p.id} baseUrl must be https`).toMatch(/^https:\/\//);
-      expect(p.baseUrl, `${p.id} baseUrl must be absolute`).toContain('/v1');
-      expect(p.wire, `${p.id} wire must be a known protocol`).toBe('openai');
+      // Never point the SDK at a doubled version segment: the Anthropic and
+      // Google SDKs append their own (`/v1/messages`, `/v1beta/…`), and the
+      // OpenAI ones append `/chat/completions` to a base that already ends in
+      // `/v1`. A vendor that serves its routes at the bare host (DeepSeek) is
+      // fine, so this only rejects the `/v1/v1` shape.
+      expect(p.baseUrl, `${p.id} must not double the version segment`).not.toMatch(/\/v1\/v1/);
+      expect(p.baseUrl, `${p.id} must not include a completions path`).not.toMatch(
+        /\/chat\/completions$/,
+      );
     }
+  });
+
+  it('maps every non-bearer auth style to a provider that declares it', () => {
+    // A vendor that needs x-api-key / x-goog-api-key but does not declare it
+    // gets a 401 that reads exactly like a bad key.
+    for (const p of BUILT_IN_PROVIDERS) {
+      if (p.authStyle === undefined) continue;
+      expect(p.authStyle, `${p.id} declares a non-bearer style`).not.toBe('bearer');
+    }
+    expect(BUILT_IN_PROVIDERS.find((p) => p.id === 'anthropic')?.authStyle).toBe('x-api-key');
+    expect(BUILT_IN_PROVIDERS.find((p) => p.id === 'gemini')?.authStyle).toBe('x-goog-api-key');
   });
 
   it('rejects an unknown built-in id and points at the catalog', async () => {
@@ -697,6 +760,172 @@ describe('kimi provider add-builtin', () => {
     expect(exitCodes).toEqual([1]);
     expect(stderr.join('')).toContain('Unknown built-in provider "nope"');
     expect(stderr.join('')).toContain('catalog list');
+  });
+});
+
+describe('kimi provider edit', () => {
+  const EXISTING = {
+    providers: {
+      mygw: { type: 'openai', baseUrl: 'https://old.example.test/v1', apiKey: 'sk-old' },
+    },
+    models: { 'mygw/m1': { provider: 'mygw', model: 'm1', maxContextSize: 1024 } },
+    defaultModel: 'mygw/m1',
+  } as unknown as KimiConfig;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubModels(ids: readonly string[]): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: ids.map((id) => ({ id })) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+  }
+
+  it('changes the base url and keeps the provider models and default model', async () => {
+    stubModels(['m1', 'm2']);
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stdout, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderEdit(deps, 'mygw', {
+        baseUrl: 'https://new.example.test/v1',
+        refresh: true,
+      }),
+    );
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['mygw']).toMatchObject({
+      baseUrl: 'https://new.example.test/v1',
+      apiKey: 'sk-old',
+    });
+    // Editing must not drop the default model or resurrect the old endpoint.
+    expect(current().defaultModel).toBe('mygw/m1');
+    expect(Object.keys(current().models ?? {}).toSorted()).toEqual(['mygw/m1', 'mygw/m2']);
+    expect(stdout.join('')).toContain('Updated "mygw": baseUrl');
+  });
+
+  it('swaps an inline key for an env reference and back', async () => {
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps } = makeDeps(harness, { env: { NEW_KEY: 'sk-env' } });
+
+    await tryRun(() =>
+      handleProviderEdit(deps, 'mygw', { apiKeyEnv: 'NEW_KEY', refresh: false }),
+    );
+    expect(current().providers['mygw']).toMatchObject({ apiKeyEnv: 'NEW_KEY' });
+    // The runtime rejects a record carrying both, so the old key must be gone.
+    expect(current().providers['mygw']).not.toHaveProperty('apiKey');
+
+    await tryRun(() => handleProviderEdit(deps, 'mygw', { apiKey: 'sk-new', refresh: false }));
+    expect(current().providers['mygw']).toMatchObject({ apiKey: 'sk-new' });
+    expect(current().providers['mygw']).not.toHaveProperty('apiKeyEnv');
+  });
+
+  it('changes the wire protocol', async () => {
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderEdit(deps, 'mygw', { type: 'openai_responses', refresh: false }),
+    );
+
+    expect(current().providers['mygw']).toMatchObject({ type: 'openai_responses' });
+  });
+
+  it('refuses to run with no fields to change', async () => {
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderEdit(deps, 'mygw', { refresh: false }));
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('Nothing to change');
+    expect(current().providers['mygw']).toMatchObject({ baseUrl: 'https://old.example.test/v1' });
+  });
+
+  it('lists the configured providers when the id is unknown', async () => {
+    const { harness } = makeHarness(EXISTING);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderEdit(deps, 'nope', { refresh: false }));
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('not found');
+    expect(stderr.join('')).toContain('mygw');
+  });
+
+  it('rejects a non-http base url', async () => {
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderEdit(deps, 'mygw', { baseUrl: 'file:///etc/passwd' }));
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('--base-url must be http(s)');
+    expect(current().providers['mygw']).toMatchObject({ baseUrl: 'https://old.example.test/v1' });
+  });
+
+  it('keeps the change but reports the failure when the new endpoint rejects the key', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: { message: 'bad key' } }), { status: 401 })),
+    );
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() =>
+      handleProviderEdit(deps, 'mygw', { apiKey: 'sk-wrong', refresh: true }),
+    );
+
+    expect(exitCodes).toEqual([1]);
+    // The edit is saved; only the refresh failed, and the old models remain.
+    expect(current().providers['mygw']).toMatchObject({ apiKey: 'sk-wrong' });
+    expect(current().models?.['mygw/m1']).toBeDefined();
+    expect(stderr.join('')).toContain('Model refresh failed');
+  });
+
+  it('refreshes by default through the real commander wiring', async () => {
+    // The handler is not enough to cover the flag plumbing: commander's
+    // `--no-refresh` writes `refresh`, so a wrong default there would skip
+    // discovery on every real invocation while the handler tests still passed.
+    stubModels(['m1']);
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stdout, exitCodes } = makeDeps(harness);
+
+    const root = new Command('provider');
+    registerProviderCommand(root, deps);
+    // registerProviderCommand attaches a `provider` subcommand, so the edit
+    // command is reached through it rather than off the root.
+    await tryRun(() =>
+      root.parseAsync(
+        ['provider', 'edit', 'mygw', '--base-url', 'https://new.example.test/v1'],
+        { from: 'user' },
+      ),
+    );
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['mygw']).toMatchObject({ baseUrl: 'https://new.example.test/v1' });
+    expect(Object.keys(current().models ?? {})).toContain('mygw/m1');
+    expect(stdout.join('')).not.toContain('Skipped model refresh');
+  });
+
+  it('skips the refresh with --no-refresh and does not touch the endpoint', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stdout } = makeDeps(harness);
+
+    await tryRun(() => handleProviderEdit(deps, 'mygw', { baseUrl: 'https://n2.test/v1', refresh: false }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(stdout.join('')).toContain('Skipped model refresh');
+    expect(current().providers['mygw']).toMatchObject({ baseUrl: 'https://n2.test/v1' });
   });
 });
 

@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo-256.png" alt="Kimi Code by lacrous" width="128" />
+
 # Kimi Code CLI — lacrous fork
 
 **Bring-your-own-provider builds for Kimi Code CLI.**
@@ -28,7 +30,8 @@ fork adds the missing third path: **you type the endpoint, it discovers the mode
 | Import from models.dev catalog | ✅ | ✅ |
 | **Add a provider by hand** (`--type` + `--base-url` + key) | ❌ | ✅ `kimi provider add-manual` |
 | **Models auto-discovered from the endpoint** | ❌ | ✅ `GET {baseUrl}/models` |
-| **Built-in vendors** (Cline, OpenRouter, OpenCode Zen, OpenCode Go, NVIDIA, NaraRouter, Token Harbor) | ❌ | ✅ `kimi provider add-builtin <id>` |
+| **Built-in vendors** (17 — see the table below) | ❌ | ✅ `kimi provider add-builtin <id>` |
+| **Change a provider's endpoint, protocol or key later** | ❌ | ✅ `kimi provider edit <id>` |
 | **Pick a provider in the TUI** (`/provider` → Add provider) | ❌ | ✅ asks for the key, discovers models, picks a default |
 
 The same flow is available in both places — `/provider` → **Add provider** → pick a
@@ -36,15 +39,33 @@ vendor, or from the command line with `kimi provider add-builtin <id>`.
 
 ### Built-in providers
 
-| Id | Vendor | Endpoint | Key prefix |
+All 17 are configured the same way — `kimi provider add-builtin <id> --api-key "$KEY"`, or
+`--api-key-env VAR` to read the key from the environment instead of storing it.
+
+| Id | Vendor | Endpoint | Wire |
 |---|---|---|---|
-| `cline` | Cline | `https://api.cline.bot/api/v1` | — |
-| `openrouter` | OpenRouter | `https://openrouter.ai/api/v1` | — |
-| `opencode-zen` | OpenCode Zen | `https://opencode.ai/zen/v1` | — |
-| `opencode-go` | OpenCode Go | `https://opencode.ai/zen/go/v1` | — |
-| `nvidia` | NVIDIA | `https://integrate.api.nvidia.com/v1` | `nvapi-` |
-| `nara` | NaraRouter | `https://router.bynara.id/v1` | `sk-nry-` |
-| `tokenharbor` | Token Harbor | `https://tokenharbor.ai/v1` | `thk_live_` |
+| `cline` | Cline | `https://api.cline.bot/api/v1` | openai |
+| `openrouter` | OpenRouter | `https://openrouter.ai/api/v1` | openai |
+| `opencode-zen` | OpenCode Zen | `https://opencode.ai/zen/v1` | openai |
+| `opencode-go` | OpenCode Go | `https://opencode.ai/zen/go/v1` | openai |
+| `nvidia` | NVIDIA | `https://integrate.api.nvidia.com/v1` | openai |
+| `nara` | NaraRouter | `https://router.bynara.id/v1` | openai |
+| `tokenharbor` | Token Harbor | `https://tokenharbor.ai/v1` | openai |
+| `openai` | OpenAI | `https://api.openai.com/v1` | openai |
+| `anthropic` | Anthropic | `https://api.anthropic.com` | anthropic |
+| `gemini` | Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | google-genai |
+| `grok` | xAI Grok | `https://api.x.ai/v1` | openai |
+| `groq` | Groq | `https://api.groq.com/openai/v1` | openai |
+| `qwen` | Qwen | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | openai |
+| `minimax` | MiniMax | `https://api.minimax.io/v1` | openai |
+| `deepseek` | DeepSeek | `https://api.deepseek.com` | openai |
+| `mistral` | Mistral | `https://api.mistral.ai/v1` | openai |
+| `huggingface` | Hugging Face | `https://router.huggingface.co/v1` | openai |
+
+Anthropic and Gemini are not plain OpenAI-compatible: Anthropic takes `x-api-key` plus a
+pinned `anthropic-version` and its model list lives at `/v1/models` (the chat base is a bare
+host), and Gemini returns `{models:[{name}]}` with the key in `x-goog-api-key`. The
+discovery path handles both, so `add-builtin` needs no vendor-specific flags.
 
 Built-ins skip the models.dev catalog entirely, so they work when models.dev is unreachable —
 which is the case in a dev build, since the release-time catalog snapshot is not present.
@@ -94,8 +115,9 @@ kimi provider add-manual my-gateway \
 | `--api-key <key>` | one of | Inline key. Falls back to `KIMI_REGISTRY_API_KEY` |
 | `--api-key-env <VAR>` | one of | Read the key from this environment variable |
 
-`anthropic` is intentionally rejected: the Anthropic Messages API has no model-list route, so
-there is nothing to discover and models must be declared by hand.
+`anthropic` and `google-genai` are accepted: both vendors do expose a model-list route
+(`GET /v1/models` with `x-api-key` + `anthropic-version`, and Google's
+`{models:[{name}]}` with `x-goog-api-key`), and the discovery path speaks both.
 
 **Discovery is best-effort, never silent.** If `{baseUrl}/models` is unreachable or returns
 401, the provider is still saved and the command exits non-zero with instructions for
@@ -119,6 +141,38 @@ Models are always read live from the vendor's `/models` route, never from a hard
 a built-in tracks the vendor's current catalog. Several of these vendors are also importable
 from the models.dev catalog (`kimi provider catalog add openrouter`, `... add nvidia`), which is
 worth preferring when you want the catalog's richer per-model metadata.
+
+### `kimi provider edit <id>`
+
+Change a provider that is already configured — a rotated key, a moved endpoint, a different
+protocol:
+
+```sh
+kimi provider edit openai --api-key "$OPENAI_API_KEY"
+kimi provider edit mygw --base-url https://gateway.example.com/v1
+kimi provider edit mygw --type openai_responses
+kimi provider edit mygw --api-key-env GATEWAY_KEY   # stop storing the key inline
+kimi provider edit mygw --base-url https://x.test/v1 --no-refresh
+```
+
+| Flag | Effect |
+|---|---|
+| `--type <type>` | New wire protocol (`openai`, `openai_responses`, `anthropic`, `google-genai`, `kimi`) |
+| `--base-url <url>` | New endpoint. Must be `http(s)` |
+| `--api-key <key>` | New inline key. Falls back to `KIMI_REGISTRY_API_KEY` |
+| `--api-key-env <VAR>` | Read the key from this variable instead of storing it inline |
+| `--no-refresh` | Apply the change without re-reading the model list |
+
+Only the flags you pass are touched; everything else on the provider record is left as it was.
+Three details worth knowing:
+
+- **The edit is applied in place**, so existing model aliases and your `default_model` survive.
+  Removing and re-adding would drop both and silently repoint the next session.
+- **`--api-key` and `--api-key-env` replace each other**, not accumulate — the config rejects a
+  record carrying both. Passing both flags at once is an error.
+- **A failed refresh does not roll back the edit.** The change is saved, the error is reported,
+  and the previous model list stays intact, so a wrong key is a one-flag fix rather than a
+  re-add.
 
 ---
 
@@ -235,12 +289,14 @@ an AI coding agent that runs in your terminal.
 
 - **Upstream:** Moonshot AI · MIT License · [upstream repo](https://github.com/MoonshotAI/kimi-code) ·
   [upstream issues](https://github.com/MoonshotAI/kimi-code/issues)
+- **Fork maintained by:** lacrous · <https://github.com/lacrous/kimi-code-by-lacrous>
 - **Fork base commit:** `21406fb4c`
 - **Branches:** `main` (canonical, full history) · `lite` (same content, squashed to one commit,
   ~70% smaller clone)
-- **Changes in this fork:** model discovery for hand-written providers, `kimi provider
-  add-manual`, `kimi provider add-builtin cline`, and removal of upstream's release/publish
-  workflows.
+- **Changes in this fork:** model discovery for hand-written providers, 17 built-in vendors,
+  `kimi provider add-manual`, `kimi provider add-builtin`, the `/provider` built-in flow,
+  model-id search in the picker, `pnpm run kimi`, and removal of upstream's release/publish
+  workflows. See [CREDITS.md](CREDITS.md) for the per-file breakdown.
 - **This fork is not affiliated with or endorsed by Moonshot AI.** Kimi, Kimi Code, and
   related names and marks are the property of their respective owner.
 

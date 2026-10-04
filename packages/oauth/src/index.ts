@@ -213,6 +213,7 @@ export {
 } from './discover-models';
 export type {
   DiscoveredModelInfo,
+  DiscoveryAuthStyle,
   FetchDiscoveredModelsOptions,
 } from './discover-models';
 

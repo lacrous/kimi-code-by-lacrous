@@ -12,6 +12,7 @@ import {
   applyDiscoveredModels,
   fetchDiscoveredModels,
   normalizeDiscoveryBaseUrl,
+  type DiscoveryAuthStyle,
 } from './discover-models';
 import {
   applyManagedApiKeyProviderModels,
@@ -98,15 +99,49 @@ interface ProviderView {
 }
 
 /**
- * Provider `type` values that speak the OpenAI-compatible `/models` dialect,
- * so a hand-written entry can have its model list read from its endpoint. The
- * Anthropic wire has no equivalent discovery route, so `anthropic` is absent
- * by design: including it would probe a host that cannot answer.
+ * Per-wire `/models` conventions. Keyed by the provider's `type` (the wire),
+ * NOT by its config id: a hand-written provider can be named anything, so
+ * `anthropic` the id cannot be what decides this — only the wire can.
+ *
+ * `anthropic` needs `x-api-key` plus the `anthropic-version` pin, and its
+ * configured base is a bare host (the SDK appends `/v1/messages`), so the
+ * probe re-adds the version segment. `google-genai` takes `x-goog-api-key`.
+ * Every OpenAI-compatible wire carries `/v1` in its configured base already
+ * and authenticates with Bearer.
+ */
+const DISCOVERY_WIRE_PROFILE: Readonly<
+  Record<string, { readonly authStyle: DiscoveryAuthStyle; readonly versionSegment?: string }>
+> = {
+  anthropic: { authStyle: 'x-api-key', versionSegment: 'v1' },
+  'google-genai': { authStyle: 'x-goog-api-key' },
+};
+
+function wireProfile(wire: string | undefined):
+  | { readonly authStyle: DiscoveryAuthStyle; readonly versionSegment?: string }
+  | undefined {
+  return wire === undefined ? undefined : DISCOVERY_WIRE_PROFILE[wire];
+}
+
+export function discoveryAuthStyleFor(wire: string | undefined): DiscoveryAuthStyle | undefined {
+  return wireProfile(wire)?.authStyle;
+}
+
+export function discoveryVersionSegmentFor(wire: string | undefined): string | undefined {
+  return wireProfile(wire)?.versionSegment;
+}
+
+/**
+ * Provider `type` values that speak a documented model-list dialect, so a
+ * hand-written entry can have its model list read from its endpoint. `google-genai`
+ * is included because the Generative Language API exposes `/models`; the other
+ * three speak the OpenAI `{ data: [...] }` shape.
  */
 const DISCOVERABLE_PROVIDER_TYPES: ReadonlySet<string> = new Set([
   'openai',
   'openai_responses',
   'kimi',
+  'anthropic',
+  'google-genai',
 ]);
 
 /**
@@ -720,13 +755,13 @@ export async function refreshProviderModels(
   }
 
   // ---------------------------------------------------------------------------
-  // 3. Hand-written OpenAI-compatible providers (model discovery)
+  // 3. Hand-written providers (model discovery)
   // ---------------------------------------------------------------------------
-  // A provider typed by hand into config.toml (`type: 'openai'` + `base_url`,
-  // no registry `source`) has no metadata source of its own, so its model list
-  // is read from `{base_url}/models`. This branch is what makes `model_source
-  // = "discover"` mean something for those entries instead of being an inert
-  // opt-out of the static exclusion above.
+  // A provider typed by hand into config.toml (`type` + `base_url`, no registry
+  // `source`) has no metadata source of its own, so its model list is read from
+  // `{base_url}/models`. This branch is what makes `model_source = "discover"`
+  // mean something for those entries instead of being an inert opt-out of the
+  // static exclusion above.
   for (const providerId of Object.keys(config.providers)) {
     if (targetId !== undefined && targetId !== providerId) continue;
     const provider = readProvider(config, providerId);
@@ -748,6 +783,12 @@ export async function refreshProviderModels(
         baseUrl: normalizeDiscoveryBaseUrl(provider.baseUrl ?? ''),
         apiKey,
         userAgent: host.userAgent,
+        // Anthropic and Google reject a Bearer header on `/models` with a 401
+        // that reads like a bad key, and Anthropic's chat base is a bare host,
+        // so both the auth style and the version segment follow the wire —
+        // never the provider id, which the user chooses freely.
+        authStyle: discoveryAuthStyleFor(provider.type),
+        versionSegment: discoveryVersionSegmentFor(provider.type),
       });
       if (models.length === 0) continue;
 

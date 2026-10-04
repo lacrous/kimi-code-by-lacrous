@@ -269,6 +269,31 @@ describe('ModelSelectorComponent', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('matches on the model id and alias, not only the display name', () => {
+    // Gateway ids are the only reliable handle a user can paste, and a display
+    // name is often absent or prettified — searching the label alone would make
+    // `gpt-4o` unfindable behind a friendly name.
+    const gateway = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4o-mini',
+      maxContextSize: 128_000,
+    } as unknown as ModelAlias;
+    const picker = new ModelSelectorComponent({
+      models: { 'openrouter/openai/gpt-4o-mini': gateway },
+      currentValue: 'openrouter/openai/gpt-4o-mini',
+      currentThinkingEffort: 'off',
+      searchable: true,
+      onSelect: vi.fn(),
+      onCancel: vi.fn(),
+    });
+
+    for (const query of ['gpt-4o', 'openai/gpt', 'openrouter']) {
+      picker.handleInput(String.fromCodePoint(27)); // clear the query
+      for (const ch of query) picker.handleInput(ch);
+      expect(text(picker), `"${query}" should match`).not.toContain('No matches');
+    }
+  });
+
   it('shows a "more" indicator when the list overflows a page', () => {
     const models: Record<string, ModelAlias> = {};
     for (let i = 0; i < 12; i++) models[`m${String(i)}`] = model(`Model ${String(i)}`);
