@@ -1,6 +1,3 @@
-import { once } from 'node:events';
-import type { EventEmitter } from 'node:events';
-
 import type {
   BrowserBackend,
   BrowserFrame,
@@ -116,25 +113,78 @@ export interface CdpSocketOptions {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-type WebSocketFactory = (options: CdpSocketOptions) => CdpSocket;
+interface OpenedCdpSocket extends CdpSocket {
+  readonly opened: Promise<void>;
+}
+
+type WebSocketFactory = (options: CdpSocketOptions) => OpenedCdpSocket;
+
+interface PlatformSocket {
+  addEventListener(
+    type: string,
+    listener: (event: { data?: unknown }) => void,
+    options?: { once?: boolean },
+  ): void;
+  send(data: string): void;
+  close(): void;
+}
 
 function globalWebSocketFactory(): WebSocketFactory | undefined {
   const ctor = (globalThis as { WebSocket?: unknown }).WebSocket;
   if (typeof ctor !== 'function') return undefined;
-  return (options) => new (ctor as new (url: string) => CdpSocket)(options.endpoint);
+  return (options) => {
+    const socket = new (ctor as new (url: string) => PlatformSocket)(options.endpoint);
+    const dataHandlers = new Map<string, ((data: string) => void)[]>();
+    const errorHandlers = new Map<string, ((error: Error) => void)[]>();
+    socket.addEventListener('message', (event) => {
+      const data = event.data;
+      if (typeof data !== 'string') return;
+      for (const handler of dataHandlers.get('message') ?? []) handler(data);
+    });
+    socket.addEventListener('close', () => {
+      for (const handler of dataHandlers.get('close') ?? []) handler('');
+    });
+    socket.addEventListener('error', () => {
+      for (const handler of errorHandlers.get('error') ?? []) {
+        handler(new Error('WebSocket error'));
+      }
+    });
+    return {
+      send: (payload) => socket.send(payload),
+      close: () => socket.close(),
+      on: (type, handler) => {
+        if (type === 'error') {
+          const list = errorHandlers.get(type) ?? [];
+          list.push(handler as (error: Error) => void);
+          errorHandlers.set(type, list);
+          return;
+        }
+        const list = dataHandlers.get(type) ?? [];
+        list.push(handler as (data: string) => void);
+        dataHandlers.set(type, list);
+      },
+      opened: new Promise<void>((resolve, reject) => {
+        socket.addEventListener('open', () => {
+          resolve();
+        }, { once: true });
+        socket.addEventListener('error', () => {
+          reject(new Error('WebSocket error while opening'));
+        }, { once: true });
+      }),
+    };
+  };
 }
 
-export function connectCdpSocket(options: CdpSocketOptions): Promise<CdpSocket> {
+export async function connectCdpSocket(options: CdpSocketOptions): Promise<CdpSocket> {
   const factory = globalWebSocketFactory();
   if (factory === undefined) {
-    return Promise.reject(
-      new Error(
+    throw new Error(
         'No global WebSocket is available. Pass connectionFactory to supply a socket.',
-      ),
-    );
+      );
   }
   const socket = factory(options);
-  return once(socket as unknown as EventEmitter, 'open').then(() => socket);
+  await socket.opened;
+  return socket;
 }
 
 export class CdpBrowserBackend implements BrowserBackend {

@@ -80,18 +80,60 @@ never touched. That is a real guard, not ceremony — a
 | `browserController.test.ts` | selector rendering, URL rejection, page-change detection, action records, loop detection |
 | `cdpBackend.test.ts` | request/response correlation, out-of-order replies, close and error propagation, AX-tree parsing, selector expressions, missing target id, empty screenshot |
 
-Both run without a browser. No test here has driven a real page — see the
-environment note in `../computer-control.md`.
+## Launching a browser Kimi owns
+
+`launchBrowser` starts Chromium and waits for its CDP endpoint to answer,
+returning the endpoint plus a `close()` that tears the process down and removes
+the profile.
+
+Owning the process is the reason this exists. A run gets a throwaway
+`user-data-dir`, so no personal session, cookie jar or password store is
+reachable, and a wedged browser can be killed and replaced without touching
+anything else. Connecting to a browser the user already had open offers neither
+guarantee.
+
+Chromium is found by reading the cache directories Playwright and Puppeteer
+leave behind (`~/.cache/ms-playwright`, `/usr/lib/chromium`), newest version
+first. That is what keeps the launcher dependency-free: a machine that has ever
+run either already has a usable Chrome on disk. If none is found the error says
+so and names `executablePath` as the override.
+
+### Sandbox
+
+`--no-sandbox` is the default. Ubuntu 23.10 and later disable unprivileged user
+namespaces under AppArmor, and Chromium's zygote sandbox aborts at startup with
+`No usable sandbox!` — without the flag the browser never comes up at all on
+this machine. Pass `sandbox: true` to keep it.
+
+This is not the isolation story. The isolation is the disposable profile plus
+the fact that Kimi owns the lifecycle; the namespace sandbox would be defence
+in depth on top of that. On a host where a real sandbox is available, prefer
+`sandbox: true` — it is one option away.
+
+### Shutdown
+
+`close()` waits for the process to actually exit before removing the profile.
+Chromium keeps writing to its directory as it shuts down, so removing first
+races it and fails with `ENOTEMPTY`. A directory that survives anyway is treated
+as a non-fatal miss: the browser is gone, which is what `close()` promises.
+
+## What is verified
+
+| Test file | Covers |
+|---|---|
+| `browserController.test.ts` | selectors, URL rejection, page-change detection, action records, loop detection |
+| `cdpBackend.test.ts` | request/response correlation, out-of-order replies, close and error propagation, AX-tree parsing, selector expressions |
+| `browserLauncher.test.ts` | binary discovery, launch, disposable profile, cleanup, double-close, and **a real browser driven end to end** |
+
+The end-to-end test starts Chromium, serves a page over real HTTP, navigates to
+it through `BrowserController`, and asserts the title, body text and
+accessibility tree that come back. It would catch a protocol regression that the
+fake socket cannot.
 
 ## Not wired into tools yet
 
-`BrowserController` and `CdpBrowserBackend` are complete and tested, but no
-`browser.*` tools are registered, because a tool needs a CDP endpoint and the
-feature has no way to obtain one — the browser may be a local Chrome, a remote
-one, or an already-open profile. That needs a decision, not a guess:
-
-1. A `computer.browser.endpoint` config entry the user fills in, or
-2. Kimi launches the browser itself and owns the process.
-
-Option 2 is the better fit for the autonomy goal, since it also gives the run a
-disposable profile. It is a bigger change, so it waits for your call.
+`BrowserController`, `CdpBrowserBackend` and `launchBrowser` are complete and
+tested, but no `browser.*` tools are registered. A tool needs a session that
+lives across turns — launch once, reuse, and tear down when the agent stops —
+and that lifetime has to be owned somewhere. `features/computerUse` does not yet
+hold a session service, so a tool would launch a new browser per call.
