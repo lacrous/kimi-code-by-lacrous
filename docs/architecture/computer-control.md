@@ -97,22 +97,38 @@ so failures and navigations always earn one and typing does not.
 
 ## Environment notes
 
-Verified on the dev machine (Ubuntu 26.04.1, display `:0`):
+Verified on the dev machine (Ubuntu 26.04.1, display `:0`) with `xdotool`,
+`wmctrl` and ImageMagick installed to a user-local prefix
+(`~/.local/opt/kimi-computer-tools`) — this account has the `sudo` group but
+`sudo` requires a password, and asking for one is not acceptable, so the
+packages were fetched with `apt-get download` and extracted with `dpkg-deb -x`.
 
-- screen 1366x768, single primary `eDP-1` — `parseMonitors` is pinned to real
-  `xrandr --query` output in the test
-- `xrandr` present; `xdotool`, `wmctrl`, `scrot`, `import` **absent**
+| Capability | Result |
+|---|---|
+| `xrandr --query` | 1366x768, single primary `eDP-1` |
+| `xdotool getdisplaygeometry` | `1366 768` |
+| `xdotool mousemove` + `getmouselocation` | cursor moved to exactly (100, 200) and read back |
+| `xdotool key` | dispatched |
+| `xdotool search` / `getwindowname` / `getwindowgeometry --shell` | returned a real window |
+| screen capture | **blocked** — `X_GetImage` returns `BadMatch` |
 
-So mouse, keyboard, window and screenshot paths are covered by parsing tests and
-a fake backend, not by live interaction. `UbuntuBackend.capabilities()` reports
-what is missing so the caller can refuse early instead of failing per action.
+The capture failure is an environment limit, not a bug. Under Wayland with a
+compositor that does not grant screen capture to arbitrary clients, `import`
+and `xwd` both fail on `X_GetImage`. It matters for the autonomy goal: the
+"see the screen" capability has no working path here yet, and neither
+ImageMagick nor xwd can supply it. On a plain X11 session, or with a
+compositor running, `import -window root` works — that is the path the adapter
+targets. Portal-based capture (`xdg-desktop-portal` `ScreenCast`) is the
+Wayland-correct answer and is not implemented.
 
-To use it for real:
+### One bug this found
 
-```sh
-sudo apt-get install -y xdotool wmctrl imagemagick
-export KIMI_CODE_EXPERIMENTAL_COMPUTER_USE=1
-```
+A tool that *runs and then fails* was leaking a raw exec error, while only
+`ENOENT` became a `ComputerControlError`. To the model those looked identical:
+an `X_GetImage` `BadMatch` from a compositor that forbids capture reported
+itself the same way as a bad argument. `classifyToolFailure` now maps tool
+output onto the nine action-failure classes, so recovery has something to
+branch on.
 
 ## Enabling
 

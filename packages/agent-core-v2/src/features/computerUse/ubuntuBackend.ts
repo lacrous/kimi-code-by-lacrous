@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import {
+  ComputerControlError,
   missingDependencyError,
   unsupportedOperationError,
   type ApplicationInfo,
@@ -115,6 +116,13 @@ function parseWindows(blocks: readonly string[]): WindowInfo[] {
   return windows;
 }
 
+export function classifyToolFailure(detail: string) {
+  if (/BadMatch|BadWindow|badmatch/i.test(detail)) return 'environment' as const;
+  if (/not found|no such window/i.test(detail)) return 'invalid_action' as const;
+  if (/permission denied|not authorized|refused/i.test(detail)) return 'authentication' as const;
+  return 'environment' as const;
+}
+
 export function parseMonitors(query: string): MonitorInfo[] {
   const monitors: MonitorInfo[] = [];
   for (const line of query.split('\n')) {
@@ -157,11 +165,18 @@ export class UbuntuBackend implements ComputerBackend {
       });
       return { stdout, stderr };
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') {
         throw missingDependencyError(command);
       }
-      throw error;
+      const detail = ((err as { stderr?: string }).stderr ?? err.message ?? '').toString().trim();
+      throw new ComputerControlError(
+        detail.length > 0
+          ? `${command} failed: ${detail.split('\n')[0]}`
+          : `${command} exited with ${String(err.code ?? 'an error')}`,
+        classifyToolFailure(detail),
+        command,
+      );
     }
   }
 
@@ -189,22 +204,17 @@ export class UbuntuBackend implements ComputerBackend {
     const probe = async (command: string): Promise<boolean> =>
       (await this._try('sh', ['-c', `command -v ${command}`])) !== undefined;
 
-    const [xdotool, wmctrl, importer] = await Promise.all([
-      probe('xdotool'),
-      probe('wmctrl'),
-      probe('import'),
-    ]);
+    const [xdotool, importer] = await Promise.all([probe('xdotool'), probe('import')]);
     const missing: string[] = [];
     if (!xdotool) missing.push('xdotool');
-    if (!wmctrl) missing.push('wmctrl');
     if (!importer) missing.push('imagemagick (import)');
 
     return {
       screen: importer,
       mouse: xdotool,
       keyboard: xdotool,
-      windows: xdotool && wmctrl,
-      applications: true,
+      windows: xdotool,
+      applications: xdotool,
       missingDependencies: missing,
     };
   }
@@ -386,11 +396,17 @@ export class UbuntuBackend implements ComputerBackend {
   }
 
   async minimizeWindow(id: string): Promise<void> {
-    await this._run('wmctrl', ['-i', '-r', id, '-b', 'add,hidden']);
+    const done = await this._try('wmctrl', ['-i', '-r', id, '-b', 'add,hidden']);
+    if (done === undefined) {
+      await this._run('xdotool', ['windowminimize', id]);
+    }
   }
 
   async maximizeWindow(id: string): Promise<void> {
-    await this._run('wmctrl', ['-i', '-r', id, '-b', 'add,maximized_vert,maximized_horz']);
+    const done = await this._try('wmctrl', ['-i', '-r', id, '-b', 'add,maximized_vert,maximized_horz']);
+    if (done === undefined) {
+      await this._run('xdotool', ['windowsize', id, '100%', '100%']);
+    }
   }
 
   moveWindow = async (id: string, point: Point): Promise<void> => {

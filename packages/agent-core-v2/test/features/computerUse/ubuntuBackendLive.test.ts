@@ -35,6 +35,44 @@ describe('UbuntuBackend — live environment', () => {
     expect(geometry.height).toBeGreaterThan(0);
   }, 20_000);
 
+  it('drives the real cursor and reads it back', async () => {
+    const backend = new UbuntuBackend();
+    const capabilities = await backend.capabilities();
+    if (!capabilities.mouse) return;
+
+    const start = await backend.mousePosition();
+    await backend.moveMouse({ x: 101, y: 201 });
+    const moved = await backend.mousePosition();
+
+    await backend.moveMouse(start);
+
+    expect(moved).toEqual({ x: 101, y: 201 });
+  }, 20_000);
+
+  it('reports screen geometry matching the real display', async () => {
+    const backend = new UbuntuBackend();
+    const capabilities = await backend.capabilities();
+    if (!capabilities.mouse) return;
+
+    const geometry = await backend.screenSize();
+    const monitors = await backend.listMonitors();
+
+    expect(geometry.width).toBeGreaterThan(0);
+    expect(geometry.height).toBeGreaterThan(0);
+    const total = monitors.reduce((sum, m) => sum + m.geometry.width * m.geometry.height, 0);
+    expect(total).toBeGreaterThanOrEqual(geometry.width * geometry.height);
+  }, 20_000);
+
+  it('lists the visible windows on the real display', async () => {
+    const backend = new UbuntuBackend();
+    const capabilities = await backend.capabilities();
+    if (!capabilities.windows) return;
+
+    const windows = await backend.listWindows();
+
+    expect(Array.isArray(windows)).toBe(true);
+  }, 20_000);
+
   it('reports the real missing-dependency list on this machine', async () => {
     const backend = new UbuntuBackend();
     const capabilities = await backend.capabilities();
