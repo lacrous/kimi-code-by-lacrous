@@ -52,6 +52,7 @@ export interface SupervisorInput extends SupervisorLimits {
   readonly fingerprint: string;
   readonly failureClass: ActionFailureClass | undefined;
   readonly repeatedCount: number;
+  readonly now?: number;
 }
 
 export interface SupervisorOutcome {
@@ -68,7 +69,7 @@ export function decideNext(input: SupervisorInput): SupervisorOutcome {
     return { decision: 'goal_blocked', reason: input.state.blockedReason };
   }
 
-  if (input.deadline !== undefined && Date.now() >= input.deadline) {
+  if (input.deadline !== undefined && (input.now ?? Date.now()) >= input.deadline) {
     return { decision: 'stop_deadline', reason: 'the deadline has passed' };
   }
 
