@@ -19,6 +19,7 @@ import {
   registerFeature,
 } from '#/features/featureRegistry';
 import { COMPUTER_USE_FLAG_ID } from '#/features/computerUse/computerUse';
+import { ICompletionCriteriaService } from '#/features/computerUse/completionCriteriaService';
 import {
   ComputerUseFeature,
   isComputerUseFeatureAssembled,
@@ -52,14 +53,22 @@ describe('ComputerUseFeature - experimental flag gating', () => {
     registerFeature(ComputerUseFeature);
   });
 
-  it('assembles an empty unit when the computer-use flag is off', () => {
+  it('contributes no computer tools when the flag is off', () => {
+    const host = createScopedTestHost([[IFlagService, stubFlag(false)]]);
+    const manager = host.app.accessor.get(IFeatureManager);
+    const agent = host.child(LifecycleScope.Agent, 'agent-1');
+
+    expect(manager.units().map((unit) => unit.name)).toEqual(['computerUse']);
+    expect(collectionViewOf(agent, AgentToolContribution).items).toHaveLength(0);
+    host.dispose();
+  });
+
+  it('still registers the criteria service with the flag off', () => {
     const host = createScopedTestHost([[IFlagService, stubFlag(false)]]);
     const manager = host.app.accessor.get(IFeatureManager);
 
-    expect(manager.units().map((unit) => unit.name)).toEqual(['computerUse']);
-    expect(manager.contributedServices()).toHaveLength(0);
-    const agent = host.child(LifecycleScope.Agent, 'agent-1');
-    expect(collectionViewOf(agent, AgentToolContribution).items).toHaveLength(0);
+    expect(manager.contributedServices()).toHaveLength(1);
+    expect(manager.contributedServices()[0]?.id).toBe(ICompletionCriteriaService);
     host.dispose();
   });
 

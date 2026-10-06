@@ -62,14 +62,42 @@ A goal with no declared checks becomes a single criterion marked
 uniform — every goal has at least one criterion — while making "not
 checkable" an explicit, visible state rather than an implicit pass.
 
-## Not called from `markComplete` yet
+## Where it is wired in
 
-`features/goal/goalService.ts` does not call `gateCompletion`. Wiring it means
-answering what a refusal *does*: the completion is rejected and the model gets
-another turn, which is the obvious behaviour, but it interacts with the
-existing blocked-audit rule (three consecutive turns before `blocked`) and with
-budget enforcement. That interaction is worth getting right in the goal service
-rather than bolting on from outside it.
+`UpdateGoalTool` calls the gate before `markComplete`, so an `UpdateGoal`
+with `status: complete` is checked first. Three details matter:
+
+**A refusal does not end the turn.** The success path returns
+`stopTurn: true`. A refusal returns a plain error result instead, which leaves
+the turn running so the model can fix the shortfall. Returning `stopTurn` on a
+refusal would end the turn with the goal still `active` and nothing scheduled to
+continue it — the run would stop on a goal whose work it had actually finished,
+which is a worse outcome than the false completion the gate prevents.
+
+Because the turn stays open, the existing goal budget remains the backstop for a
+model that cannot satisfy the criteria: it retries, reaches `max_steps_per_turn`
+or a budget limit, and the run ends through the path that already handles that.
+
+**It is opt-in.** `KIMI_CODE_EXPERIMENTAL_GOAL_VERIFICATION` must be set, so no
+existing goal flow changes behaviour by default.
+
+**Criteria come from the goal, not the model.** `CompletionCriteriaService`
+reads `<workspace>/.kimi/goals/<goalId>/criteria.json`. A goal that declares
+nothing yields one undecidable criterion, which the gate allows — a goal nobody
+defined checks for is not one the machine can adjudicate.
+
+## A bug worth recording
+
+The criteria service was first registered inside the computer-use flag guard,
+which produced `updateGoalTool depends on completionCriteriaService which is NOT
+registered`. The DI container resolves every declared decorator and throws when
+one is unregistered — making the constructor parameter optional does not help,
+because the resolution happens before the value is bound.
+
+So a service injected into a tool that is always active must be registered
+unconditionally, regardless of the flag that gates its own feature. It now is,
+before the guard, and it is inert without the env var. A test pins that the
+service exists with the flag off.
 
 ## Tests
 

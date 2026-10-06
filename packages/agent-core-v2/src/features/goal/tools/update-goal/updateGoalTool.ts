@@ -8,6 +8,10 @@ import {
   buildGoalBlockedReasonPrompt,
   buildGoalCompletionSummaryPrompt,
 } from '#/features/goal/tools/outcome-prompts';
+import { ICompletionCriteriaService } from '#/features/computerUse/completionCriteriaService';
+import { gateCompletion } from '#/features/computerUse/completionGate';
+import { createNodeCheckContext } from '#/features/computerUse/nodeCheckContext';
+import { isVerificationEnabled } from '#/features/computerUse/verificationFlag';
 
 import DESCRIPTION from './update-goal.md?raw';
 import {
@@ -25,6 +29,7 @@ export class UpdateGoalTool implements IUpdateGoalTool {
   constructor(
     @IAgentGoalService private readonly goal: IAgentGoalService,
     @IAgentScopeContext private readonly scopeContext: IAgentScopeContext,
+    @ICompletionCriteriaService private readonly criteria?: ICompletionCriteriaService,
   ) {}
 
   resolveExecution(args: UpdateGoalToolInput): ToolExecution {
@@ -61,6 +66,10 @@ export class UpdateGoalTool implements IUpdateGoalTool {
           return { output: 'Goal resumed.' };
         }
         if (status === 'complete') {
+          const refusal = await this._verifyCompletion(goalAtExecution.goalId);
+          if (refusal !== undefined) {
+            return { isError: true, output: refusal };
+          }
           const completed = await this.goal.markComplete({}, 'model');
           if (completed === null) {
             return { output: 'Goal not completed: no active goal.' };
@@ -81,6 +90,20 @@ export class UpdateGoalTool implements IUpdateGoalTool {
       },
     };
   }
+
+  private async _verifyCompletion(goalId: string): Promise<string | undefined> {
+    if (!isVerificationEnabled() || this.criteria === undefined) return undefined;
+    const criteria = await this.criteria.criteriaFor(goalId);
+    const evidence = await this.criteria.evidenceFor(goalId);
+    const result = await gateCompletion({
+      criteria,
+      evidence,
+      facts: this.criteria.factsFor(goalId),
+      context: createNodeCheckContext(evidence, { timeoutMs: 30_000 }),
+      enforce: true,
+    });
+    return result.allowed ? undefined : result.feedback;
+  }
 }
 
 function isUpdateGoalStatus(status: unknown): status is UpdateGoalToolInput['status'] {
@@ -98,4 +121,3 @@ function changedGoalOutput(status: UpdateGoalToolInput['status']): string {
   if (status === 'complete') return 'Goal not completed: the current goal changed.';
   return 'Goal not blocked: the current goal changed.';
 }
-

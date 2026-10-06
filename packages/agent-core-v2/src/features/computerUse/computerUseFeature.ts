@@ -6,6 +6,10 @@ import { Feature } from '#/features/feature';
 import { registerFeature } from '#/features/featureRegistry';
 
 import { AgentComputerUseService, IAgentComputerUseService } from '#/features/computerUse/computerUseService';
+import {
+  CompletionCriteriaService,
+  ICompletionCriteriaService,
+} from '#/features/computerUse/completionCriteriaService';
 import { COMPUTER_USE_FLAG_ID } from './computerUse';
 import {
   IComputerApplicationTool,
@@ -41,6 +45,11 @@ export class ComputerUseFeature extends Feature {
 
   constructor(@IFlagService flags: IFlagService) {
     super();
+    this.contributeService(
+      LifecycleScope.Agent,
+      ICompletionCriteriaService,
+      CompletionCriteriaService,
+    );
     if (!flags.enabled(COMPUTER_USE_FLAG_ID)) return;
     assembledFlagServices.add(flags);
     this.onDispose(() => {
