@@ -750,6 +750,7 @@ export * from '#/features/computerUse/observation';
 export * from '#/features/computerUse/types';
 export * from '#/features/computerUse/ubuntuBackend';
 export * from '#/features/computerUse/capture';
+export * from '#/features/computerUse/goalVerifier';
 export * from '#/features/computerUse/supervisor';
 export * from '#/features/computerUse/actionLog';
 export * from '#/features/computerUse/browser/types';
