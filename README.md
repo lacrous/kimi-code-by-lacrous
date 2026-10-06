@@ -265,6 +265,27 @@ Run it whenever you want to know the state of the machine:
 ./install.sh --check
 ```
 
+#### Node.js
+
+This repo requires **Node.js >= 24.15.0** (see `engines` in `package.json`).
+Stock Ubuntu 24.04 ships **Node 22**, so a fresh VM cannot satisfy that from
+`apt` alone — `install.sh` detects the version and installs Node into
+`~/.local/opt/node` via `fnm` when the system one is too old. No sudo, and it
+does not touch the distro's Node.
+
+`pnpm` is pinned to `10.33.0` and installed through corepack if it is missing or
+at a different version.
+
+If you would rather manage Node yourself, install it first and re-run; the
+script uses whatever meets the floor:
+
+```sh
+# any of these is fine
+nvm install 24 && nvm use 24
+fnm install 24 && fnm use 24
+mise use node@24
+```
+
 #### Computer-use tools
 
 `xdotool`, `wmctrl`, `x11-apps` (for `xwd`) and ImageMagick. ImageMagick's

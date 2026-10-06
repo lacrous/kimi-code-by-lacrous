@@ -45,23 +45,27 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 # The engines field says ">=24.15.0", so 26 must pass. Comparing against a
 # pinned major would reject every newer runtime the user happens to have.
-check_node_version() {
+node_version_ok() {
   local version major minor
-  version="$(node -v)"
+  version="$(node -v 2>/dev/null)" || return 1
   major="$(printf '%s' "$version" | sed 's/^v//' | cut -d. -f1)"
   minor="$(printf '%s' "$version" | sed 's/^v//' | cut -d. -f2)"
 
-  [ -n "$major" ] || die "could not parse the Node.js version from '$version'"
+  case "$major" in ''|*[!0-9]*) return 1 ;; esac
+  case "$minor" in ''|*[!0-9]*) return 1 ;; esac
 
   if [ "$major" -gt "$MIN_NODE_MAJOR" ]; then
     return 0
   fi
   if [ "$major" -lt "$MIN_NODE_MAJOR" ]; then
-    die "Node.js >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is required (found $version)"
+    return 1
   fi
-  if [ "$minor" -lt "$MIN_NODE_MINOR" ]; then
-    die "Node.js >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is required (found $version)"
-  fi
+  [ "$minor" -ge "$MIN_NODE_MINOR" ]
+}
+
+check_node_version() {
+  have node || die "Node.js >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is required but node was not found."
+  node_version_ok || die "Node.js >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is required (found $(node -v))"
 }
 
 ONLY_TOOLS=0
@@ -101,6 +105,11 @@ report() {
     fi
   done
 
+  log "build prerequisites"
+  for tool in git python3 make g++; do
+    printf '  %-10s %s\n' "$tool" "$(have "$tool" && echo present || echo MISSING)"
+  done
+
   log "browser"
   if [ -x "$HOME/.cache/ms-playwright" ] || ls "$HOME/.cache/ms-playwright"/*/chrome-linux64/chrome >/dev/null 2>&1; then
     printf '  chromium     present (playwright cache)\n'
@@ -138,6 +147,11 @@ install_tools_system() {
     x11-xserver-utils
     at-spi2-core
     python3-gi
+    build-essential
+    python3
+    git
+    curl
+    ca-certificates
   )
   [ -n "$IMAGEMAGICK_PKG" ] && packages+=("$IMAGEMAGICK_PKG")
 
@@ -224,16 +238,52 @@ verify_tools() {
   fi
 }
 
+# Installs a new enough Node into a user-local prefix.
+#
+# Stock Ubuntu 24.04 ships Node 22, which is below this repo's floor of 24.15,
+# so a fresh VM cannot satisfy the requirement from apt alone. fnm is a single
+# static binary with no runtime dependencies, which keeps this unprivileged and
+# self-contained the same way the X11 tools are.
+install_node_local() {
+  local prefix="$HOME/.local/opt/node"
+  local version="v${MIN_NODE_MAJOR}.${MIN_NODE_MINOR}"
+
+  command -v fnm >/dev/null 2>&1 || {
+    log "installing fnm (Node version manager)"
+    mkdir -p "$HOME/.local/bin"
+    curl -fsSL https://fnm.vercel.app/install.sh | bash >/dev/null 2>&1 \
+      || die "could not install fnm; install Node ${version} manually and re-run"
+  }
+  export PATH="$HOME/.local/bin:$PATH"
+  export FNM_DIR="${FNM_DIR:-$HOME/.local/share/fnm}"
+
+  log "installing Node ${version} into ${prefix}"
+  fnm install --install-if-missing --skip-shell "$version" >/dev/null 2>&1 \
+    || die "fnm could not install Node ${version}"
+  fnm use --silent --install-if-missing "$version" >/dev/null 2>&1 || true
+
+  # Put it ahead of the distro Node so the build actually uses it.
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$FNM_DIR/node-versions/${version}/installation/bin/node" "$HOME/.local/bin/node"
+  ln -sf "$FNM_DIR/node-versions/${version}/installation/bin/npm" "$HOME/.local/bin/npm"
+  ln -sf "$FNM_DIR/node-versions/${version}/installation/bin/npx" "$HOME/.local/bin/npx"
+  export PATH="$HOME/.local/bin:$PATH"
+}
+
 install_node() {
   log "checking the Node.js toolchain"
-  local major minor
-  if ! have node; then
-    die "Node.js >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is required but node was not found.
-    Install it first (nvm, fnm, mise, or https://nodejs.org), then re-run."
-  fi
-  check_node_version
 
-  if ! have pnpm; then
+  if ! have node || ! node_version_ok; then
+    if have node; then
+      warn "the system Node ($(node -v)) is older than ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR}"
+    fi
+    install_node_local
+  fi
+  have node || die "Node.js >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is still not available"
+  check_node_version
+  log "using $(command -v node) ($(node -v))"
+
+  if ! have pnpm || [ "$(pnpm -v 2>/dev/null)" != "$REQUIRED_PNPM" ]; then
     log "installing pnpm ${REQUIRED_PNPM} via corepack"
     have corepack || die "pnpm is missing and corepack is unavailable. Install pnpm ${REQUIRED_PNPM}."
     corepack enable
@@ -241,8 +291,9 @@ install_node() {
   fi
 
   local pnpm_version
-  pnpm_version="$(pnpm -v)"
-  [ "$pnpm_version" = "$REQUIRED_PNPM" ] || warn "pnpm ${pnpm_version} differs from the pinned ${REQUIRED_PNPM}"
+  pnpm_version="$(pnpm -v 2>/dev/null)"
+  [ "$pnpm_version" = "$REQUIRED_PNPM" ] \
+    || warn "pnpm ${pnpm_version:-unknown} differs from the pinned ${REQUIRED_PNPM}"
 }
 
 build_kimi() {
