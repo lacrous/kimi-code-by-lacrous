@@ -1,6 +1,6 @@
 {
   "name": "@lacrous/kimi-code",
-  "version": "2.3.0-lacrous.0",
+  "version": "3.0.0",
   "description": "The Starting Point for Next-Gen Agents",
   "license": "MIT",
   "author": "lacrous",
@@ -29,14 +29,12 @@
     "tui"
   ],
   "bin": {
-    "kimi": "dist/main.mjs"
+    "lacrous-kimi": "dist/main.mjs"
   },
   "files": [
     "dist",
     "dist-web",
     "native",
-    "scripts/postinstall.mjs",
-    "scripts/postinstall",
     "LICENSE",
     "README.md"
   ],
@@ -82,8 +80,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm -w run build:packages && vitest run",
     "e2e": "pnpm -w run build:packages && KIMI_E2E=1 vitest run test/e2e",
-    "e2e:real": "pnpm -w run build:packages && KIMI_E2E_REAL=1 vitest run test/e2e/real-llm-smoke.e2e.test.ts",
-    "postinstall": "node scripts/postinstall.mjs"
+    "e2e:real": "pnpm -w run build:packages && KIMI_E2E_REAL=1 vitest run test/e2e/real-llm-smoke.e2e.test.ts"
   },
   "optionalDependencies": {
     "@mariozechner/clipboard": "^0.3.9",

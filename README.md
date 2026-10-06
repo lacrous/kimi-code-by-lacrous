@@ -394,14 +394,21 @@ Requires Node.js ≥ 24.15.0 and pnpm 10.33.0.
 
 ### Install the fork as `lacrous-kimi`
 
-`install.sh` installs the published `@lacrous/kimi-code` npm package into an isolated prefix
-(default `~/.local/share/lacrous-kimi/lib`) and exposes it as the separate `lacrous-kimi`
-command, so an existing `kimi` (upstream's CLI or a prebuilt native binary) is left untouched.
-It needs only Node.js ≥ 22.19.0 and `npm` (or `pnpm`); no build step or pnpm workspace.
+The fork never claims the `kimi` command: since 3.0.0 the npm package itself installs a
+`lacrous-kimi` global, so `npm install -g @lacrous/kimi-code` cannot collide with an existing
+`kimi` (upstream's CLI or a prebuilt native binary). It also keeps its own data home at
+`~/.lacrous-kimi` (`KIMI_CODE_HOME` overrides it); on first run it copies your config,
+sessions, and history out of a legacy `~/.kimi-code` and leaves that original home untouched.
+
+`install.sh` is the one-shot alternative: it installs the published `@lacrous/kimi-code` npm
+package into an isolated prefix (default `~/.local/share/lacrous-kimi/lib`) and exposes the
+same `lacrous-kimi` command. It needs only Node.js ≥ 22.19.0 and `npm` (or `pnpm`); no build
+step or pnpm workspace.
 
 ```sh
+npm install -g @lacrous/kimi-code                # or:
 ./install.sh                                     # latest published version
-./install.sh --version 2.2.0-lacrous.0           # pin a version
+./install.sh --version 3.0.0                     # pin a version
 ./install.sh --bin-dir "$HOME/.local/bin"        # where the launcher goes (default ~/.local/bin)
 ```
 

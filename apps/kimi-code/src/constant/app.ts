@@ -3,7 +3,7 @@ import { ErrorCodes, type HostUiCapability } from '@moonshot-ai/kimi-code-sdk';
 import { currentKimiProfile } from '#/utils/region';
 
 export const PRODUCT_NAME = 'Kimi Code';
-export const CLI_COMMAND_NAME = 'kimi';
+export const CLI_COMMAND_NAME = 'lacrous-kimi';
 export const PROCESS_NAME = 'kimi-code';
 
 // Used in telemetry app names and HTTP User-Agent headers.
