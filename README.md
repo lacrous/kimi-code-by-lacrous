@@ -216,9 +216,10 @@ model.
 
 ## Install
 
-This fork is **not published to npm or the VS Code marketplace** — upstream's publishing
-pipelines were intentionally removed from this repository so that nothing attempts to publish
-under your account. Build and run it from source:
+This fork **publishes its CLI to npm** as
+[`@lacrous/kimi-code`](https://www.npmjs.com/package/@lacrous/kimi-code); the VS Code marketplace
+is not used. Upstream's publishing pipelines were intentionally removed from this repository so
+that nothing publishes under your account automatically. You can also build and run it from source:
 
 ```sh
 git clone https://github.com/lacrous/kimi-code-by-lacrous.git
@@ -246,6 +247,24 @@ curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
 ```
 
 Requires Node.js ≥ 24.15.0 and pnpm 10.33.0.
+
+### Install the fork as `lacrous-kimi`
+
+`install.sh` installs the published `@lacrous/kimi-code` npm package into an isolated prefix
+(default `~/.local/share/lacrous-kimi/lib`) and exposes it as the separate `lacrous-kimi`
+command, so an existing `kimi` (upstream's CLI or a prebuilt native binary) is left untouched.
+It needs only Node.js ≥ 22.19.0 and `npm` (or `pnpm`); no build step or pnpm workspace.
+
+```sh
+./install.sh                                     # latest published version
+./install.sh --version 2.2.0-lacrous.0           # pin a version
+./install.sh --bin-dir "$HOME/.local/bin"        # where the launcher goes (default ~/.local/bin)
+```
+
+`KIMI_VERSION`, `LACROUS_PREFIX`, `LACROUS_BIN_DIR`, and `LACROUS_NO_MODIFY_PATH` mirror the
+flags. The script adds `~/.local/bin` to your shell rc when it is not already on `PATH`
+(skipped when `LACROUS_NO_MODIFY_PATH` is set) and verifies the launcher with `--version`.
+Upgrade by re-running the script.
 
 ---
 
