@@ -1,4 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ErrorCodes, KimiError } from '@moonshot-ai/kimi-code-sdk';
 
 import { validateOptions } from '#/cli/options';
@@ -223,12 +226,27 @@ async function runHandleUpgradeCommand(yes = false): Promise<number> {
 }
 
 describe('main entry command handling', () => {
+  const savedKimiHome = process.env['KIMI_CODE_HOME'];
+  const sandboxHome = mkdtempSync(join(tmpdir(), 'lacrous-kimi-main-test-'));
+
   afterEach(() => {
     vi.clearAllMocks();
+    if (savedKimiHome === undefined) {
+      delete process.env['KIMI_CODE_HOME'];
+    } else {
+      process.env['KIMI_CODE_HOME'] = savedKimiHome;
+    }
+  });
+
+  afterAll(() => {
+    rmSync(sandboxHome, { recursive: true, force: true });
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // main() resolves the fork's isolated data home; pin it away from the
+    // developer's real ~/.kimi-code so a test run can never migrate it.
+    process.env['KIMI_CODE_HOME'] = sandboxHome;
     mocks.harness.ensureConfigFile.mockResolvedValue(undefined);
     mocks.harness.getConfig.mockResolvedValue({
       defaultModel: 'kimi-k2',

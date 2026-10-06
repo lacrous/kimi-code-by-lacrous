@@ -24,6 +24,7 @@ import {
 
 import { createProgram } from './cli/commands';
 import { finalizeHeadlessRun } from './cli/headless-exit';
+import { ensureForkHome } from './cli/home';
 import { startupTrace } from './utils/startup-trace';
 import type { CLIOptions } from './cli/options';
 import { OptionConflictError, validateOptions } from './cli/options';
@@ -162,6 +163,18 @@ const MIGRATE_CLI_OPTIONS: CLIOptions = {
 
 export function main(): void {
   process.title = PROCESS_NAME;
+  const forkHome = ensureForkHome();
+  if (forkHome.migrated) {
+    process.stderr.write(
+      `[lacrous-kimi] Migrated your data from ${forkHome.legacyHome} to ${forkHome.home}. ` +
+        'The original Kimi Code home was left untouched.\n',
+    );
+  } else if (forkHome.migrationError !== undefined) {
+    process.stderr.write(
+      `[lacrous-kimi] Could not migrate data from ${forkHome.legacyHome} to ${forkHome.home} ` +
+        `(${forkHome.migrationError}). Starting with a fresh home; the original data is untouched.\n`,
+    );
+  }
   installCrashHandlers();
   // A staged native update is swapped in and re-exec'd here, before any other
   // initialization, so the user session immediately runs the new binary (and
