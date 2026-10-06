@@ -258,16 +258,18 @@ build_kimi() {
 
 create_vm() {
   log "checking virtualization support"
-  KVM_FLAG=""
+  KVM_ACCEL="kvm"
   if [ ! -e /dev/kvm ]; then
     warn "/dev/kvm is absent; the VM would run under slow software emulation."
     warn "On a nested-virt host that is often unavoidable. Continuing anyway."
+    KVM_ACCEL="tcg,thread=multi"
   elif [ "$(id -nG)" != *" kvm "* ] && [ "$(id -nG)" != "kvm "* ]; then
     warn "$(id -un) is not in the kvm group, so qemu cannot open /dev/kvm."
     warn "The VM will run under software emulation and be slow."
     warn "Fix with: sudo usermod -aG kvm $(id -un)  (then log out and back in)"
-    KVM_FLAG="-accel tcg,thread=multi"
+    KVM_ACCEL="tcg,thread=multi"
   else
+    KVM_ACCEL="kvm"
     printf '  /dev/kvm is usable — hardware acceleration enabled\n'
   fi
 
@@ -315,8 +317,7 @@ VM_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 exec qemu-system-x86_64 \\
   -name kimi-agent-vm \\
   -machine q35 \\
-  -accel kvm \\
-  ${KVM_FLAG:-} \\
+  -accel ${KVM_ACCEL:-kvm} \\
   -cpu max \\
   -smp 4 \\
   -m 8192 \\
