@@ -345,6 +345,7 @@ merge_all_available_skills = true
     # oauth_host: string
   # env: record<string, string>
   # source: record<string, any>
+  # protocol_overrides: record<string, "anthropic" | "openai" | "openai_responses" | "google-genai">
 
 # ##########################################################################
 # read
