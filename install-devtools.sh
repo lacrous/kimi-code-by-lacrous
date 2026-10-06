@@ -277,12 +277,26 @@ create_vm() {
   mkdir -p "$vm_dir"
 
   if [ -z "${KIMI_VM_ISO:-}" ]; then
-    log "downloading the Ubuntu 24.04 desktop ISO"
-    KIMI_VM_ISO="$vm_dir/ubuntu-24.04-desktop-amd64.iso"
+    have curl || die "curl is required to download the ISO"
+
+    # Ubuntu publishes point releases (24.04.3, 24.04.4, ...), so a hardcoded
+    # filename 404s within months. Read the release index and take the newest.
+    local index url filename
+    index="$(curl -fsSL --retry 3 https://releases.ubuntu.com/24.04/)" \
+      || die "could not read https://releases.ubuntu.com/24.04/"
+    # The index links relative hrefs, so match the filename and build the URL.
+    filename="$(printf '%s' "$index" \
+      | grep -oE 'ubuntu-24\.04(\.[0-9]+)*-desktop-amd64\.iso' \
+      | sort -uV | tail -1)"
+    [ -n "$filename" ] || die "could not find a desktop ISO in the release index; set KIMI_VM_ISO to override"
+    url="https://releases.ubuntu.com/24.04/$filename"
+    filename="${url##*/}"
+    log "downloading $filename"
+    KIMI_VM_ISO="$vm_dir/$filename"
+
     if [ ! -f "$KIMI_VM_ISO" ]; then
-      have curl || die "curl is required to download the ISO"
-      curl -fL --retry 3 -o "$KIMI_VM_ISO.part" \
-        https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso || die "ISO download failed"
+      curl -fL --retry 3 --progress-bar -o "$KIMI_VM_ISO.part" "$url" \
+        || die "ISO download failed: $url"
       mv "$KIMI_VM_ISO.part" "$KIMI_VM_ISO"
     fi
   fi
@@ -333,16 +347,14 @@ main() {
   verify_tools
 
   if [ "$ONLY_TOOLS" -eq 1 ]; then
-    log "done (tools only)"
-    return 0
-  fi
-
-  install_node
-
-  if [ "$DO_BUILD" -eq 1 ]; then
-    build_kimi
+    log "skipping the toolchain and build (--tools)"
   else
-    log "skipping the build (--no-build)"
+    install_node
+    if [ "$DO_BUILD" -eq 1 ]; then
+      build_kimi
+    else
+      log "skipping the build (--no-build)"
+    fi
   fi
 
   if [ "$WITH_VM" -eq 1 ]; then
