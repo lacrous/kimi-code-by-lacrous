@@ -752,6 +752,7 @@ export * from '#/features/computerUse/ubuntuBackend';
 export * from '#/features/computerUse/capture';
 export * from '#/features/computerUse/goalVerifier';
 export * from '#/features/computerUse/nodeCheckContext';
+export * from '#/features/computerUse/completionGate';
 export * from '#/features/computerUse/supervisor';
 export * from '#/features/computerUse/actionLog';
 export * from '#/features/computerUse/browser/types';
