@@ -1,5 +1,11 @@
 # @lacrous/kimi-code
 
+## 3.0.0
+
+### Major Changes
+
+- Rename the global command from `kimi` to `lacrous-kimi` and move the data home to `~/.lacrous-kimi` (config, sessions, and history are copied there on first run; set `KIMI_CODE_HOME` to keep another location).
+
 ## 2.3.0-lacrous.0
 
 ### Minor Changes
