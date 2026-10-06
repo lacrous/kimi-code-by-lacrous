@@ -1,6 +1,14 @@
 import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 
+import {
+  captureScreen,
+  captureStrategies,
+  type CaptureStrategy,
+} from '#/features/computerUse/capture';
 import {
   ComputerControlError,
   missingDependencyError,
@@ -142,6 +150,7 @@ export class UbuntuBackend implements ComputerBackend {
   private readonly _display: string | undefined;
   private readonly _screenshotCommand: readonly string[] | undefined;
   private readonly _timeoutMs: number;
+  private _frameDir: string | undefined;
 
   constructor(options: UbuntuBackendOptions = {}) {
     this._display = options.display ?? process.env['DISPLAY'];
@@ -224,6 +233,53 @@ export class UbuntuBackend implements ComputerBackend {
     return parseGeometry(result.stdout.trim());
   }
 
+  private async _captureFrame(
+    target: WindowInfo | 'screen' | undefined,
+  ): Promise<Uint8Array> {
+    const path = join(
+      this._frameDir ?? (this._frameDir = await mkdtemp(join(tmpdir(), 'kimi-frame-'))),
+      'frame.png',
+    );
+    try {
+      const outcome = await captureScreen(path, this._captureAttempts(path));
+      if (outcome !== undefined) {
+        return await readFile(path);
+      }
+
+      if (target !== undefined && target !== 'screen') {
+        const result = await this._try('import', ['-window', target.id, path]);
+        if (result !== undefined) {
+          return await readFile(path);
+        }
+      }
+
+      throw new ComputerControlError(
+        'Screen capture is unavailable on this display. On a Wayland desktop, GNOME Shell ' +
+          'refuses D-Bus screenshots for sandboxed clients; check that the agent runs inside ' +
+          'the desktop session, or switch the session to X11.',
+        'environment',
+      );
+    } finally {
+      await rm(path, { force: true });
+    }
+  }
+
+  private _captureAttempts(path: string): readonly CaptureStrategy[] {
+    if (this._screenshotCommand !== undefined) {
+      const command = this._screenshotCommand;
+      return [
+        {
+          name: 'configured',
+          attempt: async () => {
+            await this._run(command[0] as string, [...command.slice(1), path]);
+            return { path, width: 0, height: 0 };
+          },
+        },
+      ];
+    }
+    return captureStrategies(path);
+  }
+
   async listMonitors() {
     const result = await this._try('xrandr', ['--query']);
     if (result === undefined) {
@@ -233,16 +289,12 @@ export class UbuntuBackend implements ComputerBackend {
   }
 
   async screenshot(target?: WindowInfo | 'screen'): Promise<Screenshot> {
-    const command = this._screenshotCommand ??
-      (target !== undefined && target !== 'screen'
-        ? ['import', '-window', target.id, 'png:-']
-        : ['import', '-window', 'root', 'png:-']);
-    const result = await this._run(command[0] as string, command.slice(1));
     const geometry = await this.screenSize();
+    const captured = await this._captureFrame(target);
     return {
       width: geometry.width,
       height: geometry.height,
-      png: new Uint8Array(Buffer.from(result.stdout, 'binary')),
+      png: captured,
       capturedAt: Date.now(),
       activeWindow: await this.activeWindow(),
     };

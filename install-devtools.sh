@@ -12,6 +12,7 @@
 #   ./install.sh --tools      only install the computer-use tools
 #   ./install.sh --no-build   install tools, skip the pnpm build
 #   ./install.sh --check      report what is present and missing, change nothing
+#   ./install.sh --check-screen  test whether screen capture works on this display
 #   ./install.sh --vm         also create the disposable VM (needs KVM)
 #
 # Computer control stays behind an experimental flag and is off by default:
@@ -66,6 +67,7 @@ check_node_version() {
 ONLY_TOOLS=0
 DO_BUILD=1
 CHECK_ONLY=0
+CHECK_SCREEN_ONLY=0
 WITH_VM=0
 
 for arg in "$@"; do
@@ -73,8 +75,9 @@ for arg in "$@"; do
     --tools)    ONLY_TOOLS=1 ;;
     --no-build) DO_BUILD=0 ;;
     --check)    CHECK_ONLY=1 ;;
+    --check-screen) CHECK_SCREEN_ONLY=1 ;;
     --vm)       WITH_VM=1 ;;
-    -h|--help)  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)  sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $arg (try --help)" ;;
   esac
 done
@@ -123,11 +126,6 @@ report() {
   return "$missing"
 }
 
-if [ "$CHECK_ONLY" -eq 1 ]; then
-  report || true
-  exit 0
-fi
-
 install_tools_system() {
   log "installing computer-use tools via apt"
 
@@ -138,6 +136,8 @@ install_tools_system() {
     wmctrl
     x11-apps
     x11-xserver-utils
+    at-spi2-core
+    python3-gi
   )
   [ -n "$IMAGEMAGICK_PKG" ] && packages+=("$IMAGEMAGICK_PKG")
 
@@ -340,12 +340,65 @@ EOF
   printf '    ssh -p 2222 <user>@localhost\n'
 }
 
+check_guest_session() {
+  log "checking the desktop session (this matters inside a VM)"
+
+  case "${XDG_SESSION_TYPE:-}" in
+    wayland)
+      printf '  session      Wayland\n'
+      printf '               screen capture goes through GNOME Shell over D-Bus;\n'
+      printf '               verify it with ./install.sh --check-screen\n'
+      ;;
+    x11)
+      printf '  session      X11 — capture works via ImageMagick\n'
+      ;;
+    *)
+      printf '  session      %s (unknown)\n' "${XDG_SESSION_TYPE:-unset}"
+      printf '               run this from a graphical login, not over plain SSH,\n'
+      printf '               or there is no display to capture\n'
+      ;;
+  esac
+
+  if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    warn "No DISPLAY and no WAYLAND_DISPLAY: this is a headless shell."
+    warn "Computer control needs a graphical session; SSH in and run 'startx',"
+    warn "or use the VM's own console."
+  fi
+}
+
+check_screen() {
+  log "testing screen capture on this display"
+  local probe
+  probe="$(mktemp -d)/probe.png"
+  if have gdbus && gdbus call --session --dest org.gnome.Shell.Screenshot \
+      --object-path /org/gnome/Shell/Screenshot \
+      --method org.gnome.Shell.Screenshot.Screenshot false false "$probe" >/dev/null 2>&1; then
+    printf '  gnome-shell  works\n'
+    rm -f "$probe"
+    return 0
+  fi
+  printf '  gnome-shell  unavailable\n'
+
+  if have import && import -window root -silent "$probe" >/dev/null 2>&1; then
+    printf '  imagemagick  works\n'
+    rm -f "$probe"
+    return 0
+  fi
+  printf '  imagemagick  unavailable\n'
+  warn 'Neither capture path works. On Wayland this usually means GNOME Shell'
+  warn 'refuses the request. A plain X11 session always works:'
+  warn '    sudo systemctl set-default graphical.target'
+  warn '    (then log out and choose "Ubuntu on Xorg" at the login screen)'
+  return 1
+}
+
 main() {
   printf '\nKimi Code (lacrous fork) installer\n'
   printf 'repository: %s\n\n' "$REPO_ROOT"
 
   install_tools_system
   verify_tools
+  check_guest_session
 
   if [ "$ONLY_TOOLS" -eq 1 ]; then
     log "skipping the toolchain and build (--tools)"
@@ -371,5 +424,16 @@ main() {
   printf 'Check the installation at any time:\n'
   printf '  %s --check\n\n' "$0"
 }
+
+if [ "$CHECK_SCREEN_ONLY" -eq 1 ]; then
+  check_guest_session
+  check_screen || true
+  exit 0
+fi
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  report || true
+  exit 0
+fi
 
 main "$@"

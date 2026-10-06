@@ -300,6 +300,38 @@ sudo usermod -aG kvm "$(id -un)"   # then log out and back in
 Without it the VM still runs, under software emulation, and is slow. The script
 detects this and says so rather than starting a VM that appears to hang.
 
+#### Running inside a VirtualBox VM
+
+`install.sh` is the full setup for a dedicated Ubuntu VM that the agent will
+drive. Inside a guest desktop it also checks the things that only matter in a
+guest:
+
+```sh
+./install.sh              # tools, toolchain, build
+./install.sh --check-screen   # does screen capture actually work here?
+```
+
+`--check-screen` is the one to run after installing Ubuntu, before trusting
+anything. It reports the session type and tests each capture path, then tells you
+what to do if neither works:
+
+| Symptom | Meaning | Fix |
+|---|---|---|
+| `gnome-shell  works` | GNOME returns frames over D-Bus | nothing to do |
+| `imagemagick  works` | X11 capture works | nothing to do |
+| both unavailable | capture is blocked | choose "Ubuntu on Xorg" at the login screen |
+
+Run it from inside the graphical session. Over plain SSH there is no display to
+capture, and the script says so rather than reporting a failure you cannot act
+on.
+
+**Why capture is the thing to check first.** Under Wayland — the Ubuntu default
+— an X11 client cannot read the framebuffer at all. `import` and `xwd` both fail
+on `X_GetImage`, and no amount of tool installation fixes that. GNOME Shell, as
+the compositor, can hand out a frame of its own output, so `capture.ts` tries
+GNOME's D-Bus API first and ImageMagick second. If both are blocked, switch the
+session to X11; that is the one configuration where capture is guaranteed.
+
 ### Running this fork
 
 ```sh

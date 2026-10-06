@@ -102,7 +102,9 @@ describe('UbuntuBackend — absent dependency handling', () => {
       expect(caught).toBeInstanceOf(ComputerControlError);
       const error = caught as ComputerControlError;
       expect(error.failureClass).toBe('environment');
-      expect(error.message).toMatch(/not installed|does not support|Could not|failed/i);
+      expect(error.message).toMatch(
+        /not installed|does not support|Could not|failed|unavailable/i,
+      );
     }
   }, 30_000);
 });
