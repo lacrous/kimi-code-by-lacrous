@@ -20,6 +20,7 @@ import {
 } from '#/features/featureRegistry';
 import { COMPUTER_USE_FLAG_ID } from '#/features/computerUse/computerUse';
 import { ICompletionCriteriaService } from '#/features/computerUse/completionCriteriaService';
+import { IAgentRunSupervisor } from '#/features/computerUse/runSupervisor';
 import {
   ComputerUseFeature,
   isComputerUseFeatureAssembled,
@@ -63,12 +64,13 @@ describe('ComputerUseFeature - experimental flag gating', () => {
     host.dispose();
   });
 
-  it('still registers the criteria service with the flag off', () => {
+  it('still registers the always-on services with the flag off', () => {
     const host = createScopedTestHost([[IFlagService, stubFlag(false)]]);
     const manager = host.app.accessor.get(IFeatureManager);
 
-    expect(manager.contributedServices()).toHaveLength(1);
-    expect(manager.contributedServices()[0]?.id).toBe(ICompletionCriteriaService);
+    const ids = manager.contributedServices().map((entry) => entry.id);
+    expect(ids).toContain(ICompletionCriteriaService);
+    expect(ids).toContain(IAgentRunSupervisor);
     host.dispose();
   });
 

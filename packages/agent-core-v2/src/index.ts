@@ -754,6 +754,7 @@ export * from '#/features/computerUse/goalVerifier';
 export * from '#/features/computerUse/nodeCheckContext';
 export * from '#/features/computerUse/completionGate';
 export * from '#/features/computerUse/runSupervisor';
+export * from '#/features/computerUse/continuationPolicy';
 export * from '#/features/computerUse/completionCriteriaService';
 export * from '#/features/computerUse/verificationFlag';
 export * from '#/features/computerUse/supervisor';

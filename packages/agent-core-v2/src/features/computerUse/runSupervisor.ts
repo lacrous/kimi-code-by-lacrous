@@ -1,3 +1,4 @@
+import { createDecorator } from '#/_base/di/instantiation';
 import type { ActionFailureClass } from '#/features/computerUse/observation';
 import {
   DEFAULT_SUPERVISOR_LIMITS,
@@ -22,6 +23,8 @@ export interface RunCheckpoint {
   readonly reason: string;
   readonly actions: number;
 }
+
+export const IAgentRunSupervisor = createDecorator<IAgentRunSupervisor>('agentRunSupervisor');
 
 export interface IAgentRunSupervisor {
   readonly _serviceBrand: undefined;

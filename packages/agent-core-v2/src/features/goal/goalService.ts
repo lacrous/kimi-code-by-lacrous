@@ -40,6 +40,9 @@ import { IConfigService } from '#/app/config/config';
 import { IEventBus } from '#/app/event/eventBus';
 import { registerEvent2Class } from '#/app/event/event2';
 import { IFlagService } from '#/app/flag/flag';
+import { COMPUTER_USE_FLAG_ID } from '#/features/computerUse/computerUse';
+import { isStop } from '#/features/computerUse/continuationPolicy';
+import { IAgentRunSupervisor } from '#/features/computerUse/runSupervisor';
 import type { GoalBudgetProperties } from '#/app/telemetry/events';
 import { ITelemetryService } from '#/app/telemetry/telemetry';
 import {
@@ -555,8 +558,36 @@ function handleUsageRecorded(context: GoalOperationContext, ctx: UsageRecordedCo
 }
 
 function handleAfterStep(context: GoalOperationContext, ctx: AfterStepContext): void {
+  recordSupervisorTurn(context, ctx);
   if (stopAfterBudgetReached(context, ctx)) return;
+  if (stopAfterSupervisor(context, ctx)) return;
   enqueueGoalOutcomeContinuation(context, ctx);
+}
+
+function recordSupervisorTurn(context: GoalOperationContext, ctx: AfterStepContext): void {
+  const goalId = goalTurnTarget(context, ctx.turnId);
+  if (goalId === undefined) return;
+  if (!context.runtime.get(IFlagService).enabled(COMPUTER_USE_FLAG_ID)) return;
+  const state = context.runtime.getState().goal;
+  const supervisor = context.runtime.get(IAgentRunSupervisor);
+  if (supervisor.state(goalId) === undefined) supervisor.begin(goalId);
+  supervisor.afterTurn({
+    goalId,
+    action: `turn:${String(ctx.step)}`,
+    fingerprint: `turn:${String(ctx.turnId)}`,
+    goalComplete: state?.status === 'complete',
+    blockedReason: state?.status === 'blocked' ? state.terminalReason : undefined,
+  });
+}
+
+function stopAfterSupervisor(context: GoalOperationContext, ctx: AfterStepContext): boolean {
+  const goalId = goalTurnTarget(context, ctx.turnId);
+  if (goalId === undefined) return false;
+  if (!context.runtime.get(IFlagService).enabled(COMPUTER_USE_FLAG_ID)) return false;
+  const checkpoint = context.runtime.get(IAgentRunSupervisor).checkpoint(goalId);
+  if (checkpoint === undefined || !isStop(checkpoint.decision)) return false;
+  ctx.stopTurn = true;
+  return true;
 }
 
 function stopAfterBudgetReached(context: GoalOperationContext, ctx: AfterStepContext): boolean {
@@ -1451,4 +1482,3 @@ export class AgentGoalService extends AgentActorService<GoalRuntimeState> implem
     return incrementTurn(goalOperationContext(this.actor));
   }
 }
-
