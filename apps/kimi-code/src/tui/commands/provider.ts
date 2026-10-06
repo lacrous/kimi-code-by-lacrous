@@ -264,7 +264,16 @@ async function saveBuiltinProvider(
   const next = await host.harness.getConfig();
   next.providers = {
     ...next.providers,
-    [builtin.id]: { type: builtin.wire, baseUrl: builtin.baseUrl, apiKey },
+    [builtin.id]: {
+      type: builtin.wire,
+      baseUrl: builtin.baseUrl,
+      apiKey,
+      // Same record the CLI writes: without this a TUI-added Zen loses the
+      // per-model wire pins and its Claude models go back to failing.
+      ...(builtin.protocolOverrides !== undefined
+        ? { protocolOverrides: builtin.protocolOverrides }
+        : undefined),
+    },
   };
   await host.harness.setConfig({
     providers: next.providers,

@@ -207,14 +207,17 @@ export type {
 
 export {
   applyDiscoveredModels,
+  applyProtocolOverrides,
   DiscoveredModelsAuthError,
   fetchDiscoveredModels,
   normalizeDiscoveryBaseUrl,
+  resolveProtocolOverride,
 } from './discover-models';
 export type {
   DiscoveredModelInfo,
   DiscoveryAuthStyle,
   FetchDiscoveredModelsOptions,
+  ProtocolOverrideMap,
 } from './discover-models';
 
 export {

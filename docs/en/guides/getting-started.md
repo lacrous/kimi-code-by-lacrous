@@ -49,11 +49,11 @@ node --version
 ::: code-group
 
 ```sh [npm]
-npm install -g @moonshot-ai/kimi-code
+npm install -g @lacrous/kimi-code
 ```
 
 ```sh [pnpm]
-pnpm add -g @moonshot-ai/kimi-code
+pnpm add -g @lacrous/kimi-code
 ```
 
 :::
@@ -159,13 +159,13 @@ kimi --version
 **Upgrade**: run `kimi upgrade` — the CLI checks for the latest version and presents update options. Choose `Install update now` to upgrade based on your current install source. You can also upgrade directly via the package manager:
 
 ```sh
-npm install -g @moonshot-ai/kimi-code@latest
+npm install -g @lacrous/kimi-code@latest
 ```
 
 **Uninstall**: if you installed via the script, delete the `kimi` executable. If you installed via npm:
 
 ```sh
-npm uninstall -g @moonshot-ai/kimi-code
+npm uninstall -g @lacrous/kimi-code
 ```
 
 ## Next steps

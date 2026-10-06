@@ -49,7 +49,7 @@ async function makeEnv(): Promise<TestEnv> {
   const ownBin = join(root, 'ownbin');
   await mkdir(ownRoot, { recursive: true });
   await mkdir(ownBin, { recursive: true });
-  await writeFile(join(ownRoot, 'package.json'), '{"name":"@moonshot-ai/kimi-code"}', 'utf-8');
+  await writeFile(join(ownRoot, 'package.json'), '{"name":"@lacrous/kimi-code"}', 'utf-8');
   await writeFile(join(ownRoot, 'main.mjs'), '// kimi-code\n', 'utf-8');
   await chmod(join(ownRoot, 'main.mjs'), 0o755);
   await symlink(join(ownRoot, 'main.mjs'), join(ownBin, 'kimi'));

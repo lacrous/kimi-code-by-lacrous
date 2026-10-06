@@ -1,8 +1,27 @@
-# @moonshot-ai/kimi-code
+# @lacrous/kimi-code
 
 > The Starting Point for Next-Gen Agents
 
-[![npm](https://img.shields.io/npm/v/@moonshot-ai/kimi-code)](https://www.npmjs.com/package/@moonshot-ai/kimi-code) [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)  [![Docs](https://img.shields.io/badge/docs-online-blue)](https://moonshotai.github.io/kimi-code/en/)
+[![npm](https://img.shields.io/npm/v/@lacrous/kimi-code)](https://www.npmjs.com/package/@lacrous/kimi-code) [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)  [![Docs](https://img.shields.io/badge/docs-online-blue)](https://moonshotai.github.io/kimi-code/en/)
+
+> **This is a fork, not the official package.** It is published by
+> [lacrous](https://github.com/lacrous) under a different npm name than
+> Moonshot AI's [`@moonshot-ai/kimi-code`](https://www.npmjs.com/package/@moonshot-ai/kimi-code),
+> from source at [lacrous/kimi-code-by-lacrous](https://github.com/lacrous/kimi-code-by-lacrous).
+> It is not affiliated with or endorsed by Moonshot AI. Kimi, Kimi Code and
+> related names and marks are the property of their respective owner.
+>
+> What this fork changes: model discovery for hand-written providers, 17
+> built-in vendor endpoints, `kimi provider add-manual` / `add-builtin`, the
+> `/provider` built-in flow, and model-id search in the picker. Upstream's
+> release and publish workflows are intentionally absent — nothing here is
+> published by upstream's pipeline.
+>
+> One deliberate difference: **this package does not self-update.** The version
+> and native-binary manifests live on Moonshot's CDN and describe
+> `@moonshot-ai/kimi-code`, so consulting them here would try to install this
+> package at a version that does not exist. Upgrade with
+> `npm install -g @lacrous/kimi-code@latest`.
 
 ## What is Kimi Code CLI
 
@@ -10,21 +29,24 @@ Kimi Code CLI is an AI coding agent that runs in your terminal. It can read and 
 
 ## Install
 
-The recommended install path is the official script. It does not require Node.js to be installed first.
-
-- **macOS / Linux**:
+This is a fork of [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code) published
+under a different npm name. Install it from npm — the `install.sh` / `install.ps1` scripts
+linked below belong to the upstream project and install `@moonshot-ai/kimi-code`, not this
+package.
 
 ```sh
-curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+npm install -g @lacrous/kimi-code
 ```
 
-- **Windows (PowerShell)**:
+Or with pnpm:
 
-```powershell
-irm https://code.kimi.com/kimi-code/install.ps1 | iex
+```sh
+pnpm add -g @lacrous/kimi-code
 ```
 
-> On Windows, install [Git for Windows](https://gitforwindows.org/) before first launch because Kimi Code CLI uses the bundled Git Bash as its shell environment. If Git Bash is installed in a custom location, set `KIMI_SHELL_PATH` to the absolute path of `bash.exe`.
+Requires Node.js 22.19.0 or later.
+
+On Windows, install [Git for Windows](https://gitforwindows.org/) before first launch because Kimi Code CLI uses the bundled Git Bash as its shell environment. If Git Bash is installed in a custom location, set `KIMI_SHELL_PATH` to the absolute path of `bash.exe`.
 
 Then run it with a new Terminal session:
 
@@ -32,19 +54,9 @@ Then run it with a new Terminal session:
 kimi --version
 ```
 
-### Alternative: npm
-
-If you prefer npm, use Node.js 22.19.0 or later:
-
-```sh
-npm install -g @moonshot-ai/kimi-code
-```
-
-Or with pnpm:
-
-```sh
-pnpm add -g @moonshot-ai/kimi-code
-```
+> Upstream's install scripts (for `@moonshot-ai/kimi-code`): macOS / Linux
+> `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash`, Windows
+> `irm https://code.kimi.com/kimi-code/install.ps1 | iex`.
 
 For upgrade and uninstall instructions, see the [Getting Started guide](https://moonshotai.github.io/kimi-code/en/guides/getting-started).
 

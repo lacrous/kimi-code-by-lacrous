@@ -44,6 +44,12 @@ requires; the fork's edits to them are recorded here instead of by rewriting the
 | `apps/kimi-code/test/cli/provider.test.ts` | Tests for the new commands and the vendor table. |
 | `apps/kimi-code/test/tui/components/dialogs/model-selector.test.ts` | Test that search matches a gateway model id. |
 | `apps/kimi-code/package.json`, `package.json` | The `kimi` / `dev:local` script entries. |
+| `packages/oauth/src/discover-models.ts` | Per-model wire overrides: `resolveProtocolOverride` (longest-prefix-wins) and `applyProtocolOverrides`, plus writing a declared wire onto the model alias. |
+| `packages/oauth/src/managed-kimi-code.ts` | `parseModelProtocol` accepts every `ProtocolSchema` wire (`openai`, `google-genai` added), not just `anthropic` / `response`. |
+| `packages/agent-core-v2/src/llm-adapter/provider/provider.ts`, `app/kosongConfig/configSection.ts` | `providers.<id>.protocolOverrides` — the config field discovery reads the pins from. |
+| `apps/kimi-code/src/utils/built-in-providers.ts` | The `protocolOverrides` field, declared for `opencode-zen` (`claude-*` → `anthropic`); `vertexai` removed from the wire union, where it was a declared wire that `add-manual` rejected. |
+| `apps/kimi-code/test/cli/provider.test.ts` | Guards that a built-in declares only wires `add-manual` accepts, and that overrides name known wires. |
+| `packages/oauth/test/discover-models.test.ts` | Override resolution, longest-prefix-wins, alias persistence. |
 | `.gitignore` | Ignores the dev runner's isolated config home. |
 | `README.md` | Fork documentation. |
 

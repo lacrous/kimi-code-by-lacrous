@@ -33,6 +33,14 @@ export const ProviderTypeSchema = z.enum([
 
 export type ProviderType = z.infer<typeof ProviderTypeSchema>;
 
+/**
+ * Wires a model alias or a per-model override may pin itself to. Kept equal to
+ * the engine's `ProtocolSchema` so a pin written here survives the SDK's own
+ * config validation instead of being stripped on the way in.
+ */
+export const ProtocolSchema = z.enum(['anthropic', 'openai', 'openai_responses', 'google-genai']);
+export type Protocol = z.infer<typeof ProtocolSchema>;
+
 export const OAuthRefSchema = z.object({
   storage: z.enum(['file', 'keyring']),
   key: z.string().min(1),
@@ -53,6 +61,7 @@ export const ProviderConfigSchema = z.object({
   env: StringRecordSchema.optional(),
   customHeaders: StringRecordSchema.optional(),
   source: z.record(z.string(), z.unknown()).optional(),
+  protocolOverrides: z.record(z.string(), ProtocolSchema).optional(),
 });
 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
@@ -66,7 +75,7 @@ const ModelAliasBaseSchema = z.object({
   capabilities: z.array(z.string()).optional(),
   displayName: z.string().optional(),
   reasoningKey: z.string().optional(),
-  protocol: z.enum(['anthropic', 'openai_responses']).optional(),
+  protocol: ProtocolSchema.optional(),
   adaptiveThinking: z.boolean().optional(),
   supportEfforts: z.array(z.string()).optional(),
   defaultEffort: z.string().optional(),

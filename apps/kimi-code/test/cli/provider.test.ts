@@ -26,6 +26,7 @@ import {
   handleProviderEdit,
   handleProviderList,
   handleProviderRemove,
+  MANUAL_PROVIDER_TYPES,
   registerProviderCommand,
   type ProviderDeps,
 } from '#/cli/sub/provider';
@@ -670,6 +671,89 @@ describe('kimi provider add-builtin', () => {
     expect(stdout.join('')).toContain('Cline is ready');
   });
 
+  it('writes a built-in per-model wire override into config', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: [{ id: 'claude-sonnet-4' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderAddBuiltin(deps, 'opencode-zen', { apiKey: 'sk-test' }));
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['opencode-zen']?.protocolOverrides).toEqual({
+      'claude-*': 'anthropic',
+    });
+    // And the pin must reach the alias, not just the provider record.
+    expect(current().models?.['opencode-zen/claude-sonnet-4']).toMatchObject({
+      protocol: 'anthropic',
+    });
+  });
+
+  it('writes no override map for a built-in that declares none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: [{ id: 'm1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const { harness, current } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps } = makeDeps(harness);
+
+    await tryRun(() => handleProviderAddBuiltin(deps, 'cline', { apiKey: 'sk-test' }));
+
+    expect(current().providers['cline']).not.toHaveProperty('protocolOverrides');
+    expect(current().models?.['cline/m1']).not.toHaveProperty('protocol');
+  });
+
+  it('warns but does not fail when a key does not match the vendor prefix', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: [{ id: 'm1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const { harness } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    // NVIDIA keys look like `nvapi-`; an OpenAI key is a realistic paste error
+    // that otherwise surfaces as an opaque 401 on the models route.
+    await tryRun(() => handleProviderAddBuiltin(deps, 'nvidia', { apiKey: 'sk-proj-wrong' }));
+
+    expect(exitCodes).toEqual([]);
+    expect(stderr.join('')).toContain('does not start with "nvapi-"');
+  });
+
+  it('says nothing when the key carries the vendor prefix', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: [{ id: 'm1' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const { harness } = makeHarness({ providers: {}, models: {} } as KimiConfig);
+    const { deps, stderr } = makeDeps(harness);
+
+    await tryRun(() => handleProviderAddBuiltin(deps, 'nvidia', { apiKey: 'nvapi-good' }));
+
+    expect(stderr.join('')).toBe('');
+  });
+
   it('configures every built-in vendor from the shared table', async () => {
     // Each vendor gets its own throwaway home so one config does not leak
     // providers into the next case.
@@ -738,6 +822,45 @@ describe('kimi provider add-builtin', () => {
         /\/chat\/completions$/,
       );
     }
+  });
+
+  it('declares only wires the manual path accepts', () => {
+    // A built-in whose `wire` is outside MANUAL_PROVIDER_TYPES is a trap:
+    // `add-builtin` delegates to `add-manual`, which rejects the wire before
+    // writing anything, so the entry looks supported and can never be added.
+    // `vertexai` sat in this union for exactly that reason.
+    const accepted = new Set<string>(MANUAL_PROVIDER_TYPES);
+    for (const p of BUILT_IN_PROVIDERS) {
+      expect(accepted.has(p.wire), `${p.id} declares wire "${p.wire}", which add-manual rejects`).toBe(
+        true,
+      );
+    }
+  });
+
+  it('declares per-model wire overrides that the CLI accepts', () => {
+    // Deliberately MANUAL_PROVIDER_TYPES rather than the `BuiltInProviderPin`
+    // type: `kimi` is a provider wire but not a Protocol member, and an
+    // override naming it would be dropped at the config boundary.
+    const accepted = new Set<string>(MANUAL_PROVIDER_TYPES.filter((w) => w !== 'kimi'));
+    for (const p of BUILT_IN_PROVIDERS) {
+      for (const [pattern, wire] of Object.entries(p.protocolOverrides ?? {})) {
+        expect(
+          accepted.has(wire),
+          `${p.id} override ${pattern} pins wire "${wire}", which ProtocolSchema rejects`,
+        ).toBe(true);
+        expect(pattern.length, `${p.id} override pattern must be an id or a glob`).toBeGreaterThan(
+          0,
+        );
+      }
+    }
+  });
+
+  it('pins OpenCode Zen Claude models to the Anthropic wire', () => {
+    // The case the override exists for: Zen lists Claude models over an
+    // OpenAI-shaped /models, but serves them on the Anthropic Messages API.
+    const zen = BUILT_IN_PROVIDERS.find((p) => p.id === 'opencode-zen');
+    expect(zen?.wire).toBe('openai');
+    expect(zen?.protocolOverrides).toEqual({ 'claude-*': 'anthropic' });
   });
 
   it('maps every non-bearer auth style to a provider that declares it', () => {

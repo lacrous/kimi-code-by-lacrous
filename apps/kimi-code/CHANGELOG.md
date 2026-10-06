@@ -1,4 +1,16 @@
-# @moonshot-ai/kimi-code
+# @lacrous/kimi-code
+
+## 2.3.0-lacrous.0
+
+### Minor Changes
+
+- Built-in provider vendors can now declare per-model wire overrides, so a gateway that serves part of its catalog over a different protocol than its default (OpenCode Zen serving Claude models over Anthropic Messages) works on first use instead of being listed and then failing.
+
+## 2.2.0-lacrous.0
+
+### Minor Changes
+
+- Published the fork's CLI to npm as `@lacrous/kimi-code`, with an `install.sh` that installs it into an isolated prefix as the separate `lacrous-kimi` command.
 
 ## 2.1.1
 

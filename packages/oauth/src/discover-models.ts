@@ -20,7 +20,7 @@ import {
   CUSTOM_REGISTRY_DEFAULT_CAPABILITIES,
   CUSTOM_REGISTRY_DEFAULT_MAX_CONTEXT,
 } from './custom-registry';
-import type { ManagedKimiModelAlias } from './managed-kimi-code';
+import type { ManagedKimiCodeProtocol, ManagedKimiModelAlias } from './managed-kimi-code';
 import { CUSTOM_REGISTRY_MODEL_FIELDS, mergeRefreshedModelAlias } from './model-alias-merge';
 import { isRecord } from './utils';
 
@@ -34,6 +34,18 @@ export interface DiscoveredModelInfo {
   readonly displayName?: string | undefined;
   readonly maxContextSize?: number | undefined;
   readonly capabilities?: readonly string[] | undefined;
+  /**
+   * Wire this one model is served over, when the endpoint's provider default
+   * is wrong for it.
+   *
+   * `/models` returns ids and little else and cannot express a per-model
+   * protocol, so gateways that serve part of their catalog over a different
+   * wire (OpenCode Zen serving Claude models over Anthropic Messages) leave
+   * the caller no way to tell — the model is listed and then fails on first
+   * use. The vendor table declares those overrides; this carries them onto the
+   * alias, where `resolveModelProtocol` reads them ahead of the provider wire.
+   */
+  readonly protocol?: ManagedKimiCodeProtocol | undefined;
 }
 
 /**
@@ -251,6 +263,59 @@ function positiveInt(value: unknown): number | undefined {
 }
 
 /**
+ * Per-model wire overrides a vendor declares, keyed by model id or glob.
+ *
+ * Keys may end in `*` for a prefix match (`claude-*`), or be a bare `*` for
+ * every model the endpoint lists. An exact id always wins over a glob, so a
+ * vendor can pin one model away from a family-wide default.
+ */
+export type ProtocolOverrideMap = Readonly<Record<string, ManagedKimiCodeProtocol>>;
+
+/**
+ * Resolves the wire a discovered model must use, or undefined when the
+ * provider's own wire is correct.
+ *
+ * `/models` cannot express a per-model protocol, so the vendor table supplies
+ * the only place the knowledge exists. Matching is longest-prefix-wins rather
+ * than first-declared-wins: object key order in a hand-written table is not a
+ * priority, and a caller sorting keys for readability would silently change
+ * which model gets which wire.
+ */
+export function resolveProtocolOverride(
+  modelId: string,
+  overrides: ProtocolOverrideMap | undefined,
+): ManagedKimiCodeProtocol | undefined {
+  if (overrides === undefined) return undefined;
+  const exact = overrides[modelId];
+  if (exact !== undefined) return exact;
+
+  let best: { readonly prefix: string; readonly protocol: ManagedKimiCodeProtocol } | undefined;
+  for (const [pattern, protocol] of Object.entries(overrides)) {
+    if (!pattern.endsWith('*')) continue;
+    const prefix = pattern.slice(0, -1);
+    if (!modelId.startsWith(prefix)) continue;
+    if (best === undefined || prefix.length > best.prefix.length) best = { prefix, protocol };
+  }
+  return best?.protocol;
+}
+
+/**
+ * Returns a copy of `models` with each declared per-model wire attached.
+ * Models without an override are returned unchanged — `protocol` stays absent
+ * so the alias falls back to the provider's own wire.
+ */
+export function applyProtocolOverrides(
+  models: readonly DiscoveredModelInfo[],
+  overrides: ProtocolOverrideMap | undefined,
+): readonly DiscoveredModelInfo[] {
+  if (overrides === undefined || Object.keys(overrides).length === 0) return models;
+  return models.map((model) => {
+    const protocol = resolveProtocolOverride(model.id, overrides);
+    return protocol === undefined ? model : { ...model, protocol };
+  });
+}
+
+/**
  * Writes discovered models into `config` as `${providerId}/${id}` aliases,
  * merging onto any existing alias so hand-added fields survive. Aliases the
  * endpoint no longer lists are removed — the caller restores user-owned ones
@@ -279,6 +344,13 @@ export function applyDiscoveredModels(
       capabilities: [...(model.capabilities ?? CUSTOM_REGISTRY_DEFAULT_CAPABILITIES)],
       displayName: model.displayName ?? model.id,
     };
+    // A vendor-declared per-model wire rides along on the alias, where
+    // `resolveModelProtocol` reads it ahead of the provider's own wire. It is
+    // written only when declared: an absent `protocol` must stay absent so the
+    // alias keeps falling back to the provider default.
+    if (model.protocol !== undefined) {
+      alias.protocol = model.protocol;
+    }
     existingModels[key] = mergeRefreshedModelAlias(existing, alias, CUSTOM_REGISTRY_MODEL_FIELDS);
   }
   config.models = existingModels;

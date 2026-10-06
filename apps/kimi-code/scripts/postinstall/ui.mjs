@@ -181,7 +181,7 @@ function warningHeading(text) {
  *     fs errors). Listed last so the user can see what to retry.
  */
 export function logMigrationDone(outcomes, pm) {
-  const reinstallCmd = pmGlobalInstallCommand(pm, '@moonshot-ai/kimi-code');
+  const reinstallCmd = pmGlobalInstallCommand(pm, '@lacrous/kimi-code');
   const {
     renames,
     consolidates,
@@ -322,7 +322,7 @@ export function logMigrationDone(outcomes, pm) {
  */
 export function logMigrationBlocked(blocked, actionable, pm) {
   const isWindows = process.platform === 'win32';
-  const reinstallCmd = pmGlobalInstallCommand(pm, '@moonshot-ai/kimi-code');
+  const reinstallCmd = pmGlobalInstallCommand(pm, '@lacrous/kimi-code');
 
   const lines = [
     warningHeading('Can\'t switch to the new kimi yet'),
@@ -384,7 +384,7 @@ export function logMigrationBlocked(blocked, actionable, pm) {
  * user can decide.
  */
 export function logForeignKimiInTheWay(foreignPath, pm) {
-  const reinstallCmd = pmGlobalInstallCommand(pm, '@moonshot-ai/kimi-code');
+  const reinstallCmd = pmGlobalInstallCommand(pm, '@lacrous/kimi-code');
   emit(
     renderBox([
       warningHeading('Can\'t switch to the new kimi yet'),
@@ -417,7 +417,7 @@ export function logMigrationIncomplete(input, pm) {
   const { outcomes, verify } = input;
   const { renames, consolidates, skippedForeignTarget, deletes, errors } = outcomes;
   const isWindows = process.platform === 'win32';
-  const reinstallCmd = pmGlobalInstallCommand(pm, '@moonshot-ai/kimi-code');
+  const reinstallCmd = pmGlobalInstallCommand(pm, '@lacrous/kimi-code');
 
   const lines = [warningHeading('Couldn\'t finish switching to the new kimi'), ''];
 
@@ -517,7 +517,7 @@ export function logMigrationIncomplete(input, pm) {
 export function logNewCliNotOnPath(detection, pm) {
   const isWindows = process.platform === 'win32';
   const binCmd = pmGlobalBinCommand(pm);
-  const reinstallCmd = pmGlobalInstallCommand(pm, '@moonshot-ai/kimi-code');
+  const reinstallCmd = pmGlobalInstallCommand(pm, '@lacrous/kimi-code');
 
   const newPathHint = isWindows
     ? `$env:Path = "$(${binCmd});$env:Path"`

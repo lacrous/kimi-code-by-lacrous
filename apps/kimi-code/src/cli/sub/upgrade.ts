@@ -3,7 +3,11 @@ import { track as trackTelemetry, type TelemetryProperties } from '@moonshot-ai/
 
 import { INTERACTIVE_UPDATE_CHECK_TIMEOUT_MS } from '#/constant/app';
 
-import { refreshUpdateCache } from '#/cli/update/refresh';
+import {
+  isSelfUpdateDisabled,
+  refreshUpdateCache,
+  selfUpdateDisabledMessage,
+} from '#/cli/update/refresh';
 import { selectUpdateTarget } from '#/cli/update/select';
 import { detectInstallSource } from '#/cli/update/source';
 import {
@@ -61,6 +65,14 @@ export async function handleUpgrade(
   try {
     cache = await deps.refreshUpdateCache();
   } catch (error) {
+    // A disabled self-update channel is a known state, not a failed check:
+    // reporting it as "failed to check for updates" would send the user
+    // hunting a network problem they do not have. Keyed off the error's
+    // identity so a genuine network failure still reports as one.
+    if (isSelfUpdateDisabled(error)) {
+      deps.stdout.write(`${selfUpdateDisabledMessage()}\n`);
+      return 1;
+    }
     const reason = formatErrorMessage(error);
     trackUpgradeEvent(deps.track, 'upgrade_command_failed', {
       current_version: currentVersion,

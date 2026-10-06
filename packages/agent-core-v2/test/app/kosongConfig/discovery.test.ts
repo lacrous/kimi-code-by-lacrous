@@ -904,6 +904,51 @@ describe('refreshProviderModels hand-written provider discovery', () => {
     }
   });
 
+  it('pins a gateway model to another wire when the provider declares an override', async () => {
+    stubModelsEndpoint({ data: [{ id: 'claude-sonnet-4' }, { id: 'gpt-5' }] });
+    const { host, discovery, models } = await createHost({
+      providers: {
+        zen: {
+          type: 'openai',
+          baseUrl: 'https://zen.example.test/v1',
+          apiKey: 'k',
+          protocolOverrides: { 'claude-*': 'anthropic' },
+        },
+      },
+      models: {},
+    });
+    try {
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.failed).toEqual([]);
+      expect(models.list()['zen/claude-sonnet-4']).toMatchObject({ protocol: 'anthropic' });
+      expect(models.list()['zen/gpt-5']?.protocol).toBeUndefined();
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('drops an unknown override wire without failing the whole refresh', async () => {
+    stubModelsEndpoint({ data: [{ id: 'claude-sonnet-4' }] });
+    const { host, discovery, models } = await createHost({
+      providers: {
+        zen: {
+          type: 'openai',
+          baseUrl: 'https://zen.example.test/v1',
+          apiKey: 'k',
+          protocolOverrides: { 'claude-*': 'bedrock' },
+        },
+      },
+      models: {},
+    });
+    try {
+      const result = await discovery.refreshProviderModels({ scope: 'all' });
+      expect(result.failed).toEqual([]);
+      expect(models.list()['zen/claude-sonnet-4']?.protocol).toBeUndefined();
+    } finally {
+      host.dispose();
+    }
+  });
+
   it('strips a pasted /chat/completions suffix instead of requesting /models under it', async () => {
     const fetchMock = stubModelsEndpoint({ data: [{ id: 'm1' }] });
     const { host, discovery } = await createHost({

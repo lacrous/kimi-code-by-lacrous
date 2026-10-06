@@ -70,11 +70,28 @@ discovery path handles both, so `add-builtin` needs no vendor-specific flags.
 Built-ins skip the models.dev catalog entirely, so they work when models.dev is unreachable —
 which is the case in a dev build, since the release-time catalog snapshot is not present.
 
-> **One caveat on model discovery.** `/models` returns model ids and little else, and cannot
-> express a *per-model protocol*. OpenCode Zen serves part of its catalog over the Anthropic
-> Messages API; models.dev marks those models, but a plain `/models` fetch cannot see it. Those
-> models are listed and may fail on first use. Import Zen from the catalog
-> (`kimi provider catalog add opencode`) if you need the per-model protocol honored.
+**Per-model protocols.** `/models` returns model ids and little else, so it cannot express
+that one model on a gateway is served over a different protocol than the rest. OpenCode Zen
+lists Claude models that it actually serves over the Anthropic Messages API; models.dev marks
+those models, but a plain `/models` fetch cannot see it.
+
+Built-ins that hit this declare the mapping in the vendor table, which is written into config
+as `providers.<id>.protocolOverrides` and copied onto each matching model alias — where it
+takes precedence over the provider's own wire. `opencode-zen` declares `claude-*` as
+`anthropic`, so its Claude models work rather than being listed and then failing on first use.
+Matching is longest-prefix-wins, and an exact model id beats any glob.
+
+A manual provider can set the same map by hand:
+
+```toml
+[providers.my-gateway]
+type = "openai"
+base_url = "https://gateway.example.com/v1"
+protocolOverrides = { "claude-*" = "anthropic" }
+```
+
+Only `anthropic`, `openai`, `openai_responses` and `google-genai` are accepted; an unknown wire
+is dropped with a warning rather than failing the whole refresh.
 
 ### `kimi provider add-manual`
 
@@ -239,11 +256,11 @@ node apps/kimi-code/dist/main.mjs --version
 
 ### One-shot install
 
-`install.sh` installs the computer-use tools, checks the Node toolchain, and builds the
+`install-devtools.sh` installs the computer-use tools, checks the Node toolchain, and builds the
 CLI from this checkout:
 
 ```sh
-./install.sh
+./install-devtools.sh
 ```
 
 | Flag | Effect |
@@ -262,14 +279,14 @@ it will not prompt for a password.
 Run it whenever you want to know the state of the machine:
 
 ```sh
-./install.sh --check
+./install-devtools.sh --check
 ```
 
 #### Node.js
 
 This repo requires **Node.js >= 24.15.0** (see `engines` in `package.json`).
 Stock Ubuntu 24.04 ships **Node 22**, so a fresh VM cannot satisfy that from
-`apt` alone — `install.sh` detects the version and installs Node into
+`apt` alone — `install-devtools.sh` detects the version and installs Node into
 `~/.local/opt/node` via `fnm` when the system one is too old. No sudo, and it
 does not touch the distro's Node.
 
@@ -307,7 +324,7 @@ machine without computer control is unchanged.
 
 #### Disposable VM
 
-`./install.sh --vm` creates a 40 GB sparse qcow2 disk and a launcher for an
+`./install-devtools.sh --vm` creates a 40 GB sparse qcow2 disk and a launcher for an
 Ubuntu 24.04 desktop VM with 4 vCPU, 8 GB RAM, port-forwarded SSH on 2222, and
 a disposable profile for the browser.
 
@@ -323,13 +340,13 @@ detects this and says so rather than starting a VM that appears to hang.
 
 #### Running inside a VirtualBox VM
 
-`install.sh` is the full setup for a dedicated Ubuntu VM that the agent will
+`install-devtools.sh` is the full setup for a dedicated Ubuntu VM that the agent will
 drive. Inside a guest desktop it also checks the things that only matter in a
 guest:
 
 ```sh
-./install.sh              # tools, toolchain, build
-./install.sh --check-screen   # does screen capture actually work here?
+./install-devtools.sh              # tools, toolchain, build
+./install-devtools.sh --check-screen   # does screen capture actually work here?
 ```
 
 `--check-screen` is the one to run after installing Ubuntu, before trusting
@@ -440,9 +457,10 @@ an AI coding agent that runs in your terminal.
 - **Branches:** `main` (canonical, full history) · `lite` (same content, squashed to one commit,
   ~70% smaller clone)
 - **Changes in this fork:** model discovery for hand-written providers, 17 built-in vendors,
-  `kimi provider add-manual`, `kimi provider add-builtin`, the `/provider` built-in flow,
-  model-id search in the picker, `pnpm run kimi`, and removal of upstream's release/publish
-  workflows. See [CREDITS.md](CREDITS.md) for the per-file breakdown.
+  per-model wire overrides (`providers.<id>.protocolOverrides`), `kimi provider add-manual`,
+  `kimi provider add-builtin`, the `/provider` built-in flow, model-id search in the picker,
+  `pnpm run kimi`, and removal of upstream's release/publish workflows. See
+  [CREDITS.md](CREDITS.md) for the per-file breakdown.
 - **This fork is not affiliated with or endorsed by Moonshot AI.** Kimi, Kimi Code, and
   related names and marks are the property of their respective owner.
 

@@ -54,7 +54,7 @@ describe('promptForInstallChoice', () => {
     const promptPromise = promptForInstallChoice({
       currentVersion: '0.4.0',
       target: { version: '0.5.0' },
-      installCommand: 'npm install -g @moonshot-ai/kimi-code@0.5.0',
+      installCommand: 'npm install -g @lacrous/kimi-code@0.5.0',
       installSource: 'npm-global',
       input,
       output,

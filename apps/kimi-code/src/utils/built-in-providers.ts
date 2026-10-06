@@ -21,6 +21,17 @@
  * models.dev catalog instead if you need the per-model protocol honored.
  */
 
+/**
+ * Wires a single model alias may be pinned to — the engine's `Protocol`, which
+ * is `wire` minus `kimi`.
+ *
+ * `kimi` is a provider wire, not a `Protocol` member: a per-model pin naming
+ * it could not be validated or stored, and `ProtocolSchema` drops it at the
+ * config boundary. Typing the override map separately from `wire` makes that
+ * unrepresentable in the first place, rather than a runtime surprise.
+ */
+export type BuiltInProviderPin = 'anthropic' | 'openai' | 'google-genai' | 'openai_responses';
+
 export interface BuiltInProvider {
   /** Provider id written into config.toml. */
   readonly id: string;
@@ -29,8 +40,14 @@ export interface BuiltInProvider {
   /**
    * Wire protocol, narrowed to the `ProviderConfig['type']` union so a built-in
    * can be written into config without a cast.
+   *
+   * `vertexai` was once listed here and was a trap: it is not in
+   * `MANUAL_PROVIDER_TYPES`, so `add-builtin` (which delegates to
+   * `add-manual`) rejected it before writing anything, and the engine's
+   * discoverable-wire set does not include it either. A built-in may only
+   * declare a wire that both accept — `test/cli/provider.test.ts` enforces it.
    */
-  readonly wire: 'anthropic' | 'openai' | 'kimi' | 'google-genai' | 'openai_responses' | 'vertexai';
+  readonly wire: 'anthropic' | 'openai' | 'kimi' | 'google-genai' | 'openai_responses';
   /** OpenAI-compatible base URL, including any `/v1` segment. */
   readonly baseUrl: string;
   /** Subtitle shown under the name in the picker. */
@@ -51,6 +68,18 @@ export interface BuiltInProvider {
    * key, so the style must be declared rather than guessed.
    */
   readonly authStyle?: 'bearer' | 'x-api-key' | 'x-goog-api-key';
+  /**
+   * Per-model wire pins, keyed by model id or `prefix*` glob, for vendors whose
+   * `/models` route lists a model served over a protocol other than this
+   * entry's `wire`.
+   *
+   * `/models` returns ids and little else and cannot express a per-model
+   * protocol, so this table is the only place that knowledge can live. Written
+   * into config as `providers.<id>.protocolOverrides`; discovery copies each
+   * match onto the model alias, where it takes precedence over the provider's
+   * own wire. A vendor with no overrides behaves exactly as before.
+   */
+  readonly protocolOverrides?: Readonly<Record<string, BuiltInProviderPin>>;
 }
 
 export const BUILT_IN_PROVIDERS: readonly BuiltInProvider[] = [
@@ -77,6 +106,13 @@ export const BUILT_IN_PROVIDERS: readonly BuiltInProvider[] = [
     baseUrl: 'https://opencode.ai/zen/v1',
     description: 'Curated models tested by the OpenCode team',
     consoleUrl: 'https://opencode.ai/zen',
+    // Zen serves its Claude models over the Anthropic Messages API rather
+    // than the OpenAI chat route its `/models` implies. Without this pin they
+    // are listed and then fail on first use, because nothing in the endpoint's
+    // response says which protocol they need.
+    protocolOverrides: {
+      'claude-*': 'anthropic',
+    },
   },
   {
     id: 'opencode-go',

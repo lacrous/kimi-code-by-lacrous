@@ -49,11 +49,11 @@ node --version
 ::: code-group
 
 ```sh [npm]
-npm install -g @moonshot-ai/kimi-code
+npm install -g @lacrous/kimi-code
 ```
 
 ```sh [pnpm]
-pnpm add -g @moonshot-ai/kimi-code
+pnpm add -g @lacrous/kimi-code
 ```
 
 :::
@@ -159,13 +159,13 @@ kimi --version
 **升级**：运行 `kimi upgrade`，CLI 会检查最新版本并展示更新选项。选择 `Install update now` 后根据当前安装来源执行升级；也可以直接用包管理器：
 
 ```sh
-npm install -g @moonshot-ai/kimi-code@latest
+npm install -g @lacrous/kimi-code@latest
 ```
 
 **卸载**：脚本安装的用户删除 `kimi` 可执行文件即可；npm 安装的用户：
 
 ```sh
-npm uninstall -g @moonshot-ai/kimi-code
+npm uninstall -g @lacrous/kimi-code
 ```
 
 ## 下一步

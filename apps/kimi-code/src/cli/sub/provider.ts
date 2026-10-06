@@ -32,7 +32,11 @@ import type { Command } from 'commander';
 
 import { createKimiCodeHostIdentity, createKimiCodeUserAgent } from '#/cli/version';
 import { fetchCatalogOrBuiltIn } from '#/utils/catalog-fetch';
-import { BUILT_IN_PROVIDERS, getBuiltInProvider } from '#/utils/built-in-providers';
+import {
+  BUILT_IN_PROVIDERS,
+  getBuiltInProvider,
+  type BuiltInProviderPin,
+} from '#/utils/built-in-providers';
 import { refreshAllProviderModels } from '#/tui/utils/refresh-providers';
 
 interface WritableLike {
@@ -59,8 +63,12 @@ interface AddOptions {
  * `GET /v1beta/models` with `x-goog-api-key`), and the discovery branch handles
  * each one's auth style and response shape. A hand-written provider pointing at
  * any other host on these wires can still declare models by hand.
+ *
+ * Exported so the vendor table's `wire` union can be checked against it: a
+ * built-in declaring a wire `add-manual` rejects writes a config entry the
+ * engine can never discover models for.
  */
-const MANUAL_PROVIDER_TYPES = [
+export const MANUAL_PROVIDER_TYPES = [
   'openai',
   'openai_responses',
   'kimi',
@@ -79,6 +87,20 @@ interface AddManualOptions {
   readonly baseUrl: string;
   readonly apiKey?: string;
   readonly apiKeyEnv?: string;
+  /**
+   * Per-model wire pins from the vendor table, written into config as
+   * `providers.<id>.protocolOverrides`. Only a built-in sets these: a manual
+   * provider's author is the user, who can write the same map themselves.
+   */
+  readonly protocolOverrides?: Readonly<Record<string, BuiltInProviderPin>>;
+  /**
+   * Vendor's expected key prefix, used only to warn. Vendors change prefixes
+   * without notice, so a mismatch is never fatal — it usually means the key
+   * belongs to a different provider, which otherwise surfaces as an opaque 401.
+   */
+  readonly keyHint?: string;
+  /** Display name for messages that mention the vendor. */
+  readonly displayName?: string;
 }
 
 export interface EditOptions {
@@ -325,7 +347,15 @@ export async function handleProviderAddBuiltin(
     baseUrl: builtin.baseUrl,
     apiKey: opts.apiKey,
     apiKeyEnv: opts.apiKeyEnv,
+    protocolOverrides: builtin.protocolOverrides,
+    keyHint: builtin.keyHint,
+    displayName: builtin.name,
   });
+  // `deps.exit` never returns (it throws), and `handleProviderAddManual` calls
+  // it on every discovery failure, so reaching this line already means at least
+  // one model was listed. Kept explicit because the alternative — printing it
+  // from a `finally` or ignoring the exit code — would report a working
+  // provider on the paths where the user is told to hand-edit config.toml.
   deps.stdout.write(`${builtin.name} is ready — run /provider in the TUI to pick a default model.\n`);
 }
 
@@ -339,6 +369,31 @@ export async function handleProviderAddBuiltin(
  * (shared with the TUI's background refresh) instead of a second copy in the
  * CLI, and means a provider added here refreshes like any other on next start.
  */
+/**
+ * Warns when a key does not carry the vendor's expected prefix.
+ *
+ * Never fatal: vendors change prefixes without notice and several hand out
+ * keys with no recognizable prefix at all, so rejecting would break working
+ * setups. The warning exists because the alternative failure mode is opaque —
+ * an OpenAI key pasted into NaraRouter returns a 401 that reads exactly like a
+ * revoked key, and the user has no signal that the wrong credential was used.
+ */
+function warnOnKeyPrefixMismatch(
+  deps: ProviderDeps,
+  providerId: string,
+  apiKey: string | undefined,
+  opts: AddManualOptions,
+): void {
+  const hint = opts.keyHint;
+  if (hint === undefined || hint.length === 0 || apiKey === undefined) return;
+  if (apiKey.startsWith(hint)) return;
+  const who = opts.displayName ?? `provider "${providerId}"`;
+  deps.stderr.write(
+    `warning: this key does not start with "${hint}", which ${who} keys usually do.\n` +
+      'If model discovery fails with an auth error, check that the key is for this provider.\n',
+  );
+}
+
 export async function handleProviderAddManual(
   deps: ProviderDeps,
   providerId: string,
@@ -404,6 +459,9 @@ export async function handleProviderAddManual(
       type: wire,
       baseUrl,
       ...(apiKey !== undefined ? { apiKey } : { apiKeyEnv }),
+      ...(opts.protocolOverrides !== undefined
+        ? { protocolOverrides: opts.protocolOverrides }
+        : undefined),
     },
   };
   await harness.setConfig({
@@ -412,6 +470,8 @@ export async function handleProviderAddManual(
     defaultModel: next.defaultModel,
     thinking: next.thinking,
   });
+
+  warnOnKeyPrefixMismatch(deps, id, apiKey, opts);
 
   deps.stdout.write(`Added provider "${id}" (type=${wire}, base_url=${baseUrl}).\n`);
   deps.stdout.write('Discovering models from the endpoint…\n');

@@ -1,17 +1,23 @@
 {
-  "name": "@moonshot-ai/kimi-code",
-  "version": "2.1.1",
+  "name": "@lacrous/kimi-code",
+  "version": "2.3.0-lacrous.0",
   "description": "The Starting Point for Next-Gen Agents",
   "license": "MIT",
-  "author": "Moonshot AI",
-  "homepage": "https://github.com/MoonshotAI/kimi-code/tree/main/apps/kimi-code#readme",
+  "author": "lacrous",
+  "contributors": [
+    {
+      "name": "Moonshot AI",
+      "url": "https://github.com/MoonshotAI/kimi-code"
+    }
+  ],
+  "homepage": "https://github.com/lacrous/kimi-code-by-lacrous/tree/main/apps/kimi-code#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MoonshotAI/kimi-code.git",
+    "url": "git+https://github.com/lacrous/kimi-code-by-lacrous.git",
     "directory": "apps/kimi-code"
   },
   "bugs": {
-    "url": "https://github.com/MoonshotAI/kimi-code/issues"
+    "url": "https://github.com/lacrous/kimi-code-by-lacrous/issues"
   },
   "keywords": [
     "kimi",
@@ -31,6 +37,7 @@
     "native",
     "scripts/postinstall.mjs",
     "scripts/postinstall",
+    "LICENSE",
     "README.md"
   ],
   "type": "module",
@@ -47,7 +54,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   },
   "scripts": {
     "build": "tsdown && tsdown --config tsdown.dist-worker.config.ts && node scripts/copy-native-assets.mjs && node scripts/check-web-assets.mjs",

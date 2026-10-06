@@ -298,7 +298,7 @@ describe('runUpdatePreflight', () => {
     expect(detectInstallSource).toHaveBeenCalledTimes(1);
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^npm(\.cmd)?$/),
-      ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['install', '-g', '@lacrous/kimi-code@0.5.0'],
       { detached: true, stdio: 'ignore' },
     );
   });
@@ -357,16 +357,16 @@ describe('runUpdatePreflight', () => {
     await expect(runUpdatePreflight('0.4.0', options)).resolves.toBe('exit');
     expect(mocks.promptForInstallChoice).toHaveBeenCalledWith(
       expect.objectContaining({
-        installCommand: 'npm install -g @moonshot-ai/kimi-code@0.5.0',
+        installCommand: 'npm install -g @lacrous/kimi-code@0.5.0',
         installSource: 'npm-global',
       }),
     );
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^npm(\.cmd)?$/),
-      ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['install', '-g', '@lacrous/kimi-code@0.5.0'],
       { stdio: 'inherit' },
     );
-    expect(stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.5.0');
+    expect(stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.5.0');
   });
 
   it('refreshes a stale cached target before showing the foreground install prompt', async () => {
@@ -384,15 +384,15 @@ describe('runUpdatePreflight', () => {
     expect(mocks.promptForInstallChoice).toHaveBeenCalledWith(
       expect.objectContaining({
         target: { version: '0.7.0' },
-        installCommand: 'npm install -g @moonshot-ai/kimi-code@0.7.0',
+        installCommand: 'npm install -g @lacrous/kimi-code@0.7.0',
       }),
     );
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^npm(\.cmd)?$/),
-      ['install', '-g', '@moonshot-ai/kimi-code@0.7.0'],
+      ['install', '-g', '@lacrous/kimi-code@0.7.0'],
       { stdio: 'inherit' },
     );
-    expect(stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.7.0');
+    expect(stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.7.0');
   });
 
   it('falls back to the cached foreground prompt target when the refresh hangs', async () => {
@@ -412,7 +412,7 @@ describe('runUpdatePreflight', () => {
       expect(mocks.promptForInstallChoice).toHaveBeenCalledWith(
         expect.objectContaining({
           target: { version: '0.6.0' },
-          installCommand: 'npm install -g @moonshot-ai/kimi-code@0.6.0',
+          installCommand: 'npm install -g @lacrous/kimi-code@0.6.0',
         }),
       );
     } finally {
@@ -431,7 +431,7 @@ describe('runUpdatePreflight', () => {
     await runUpdatePreflight('0.4.0', options);
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^pnpm(\.cmd)?$/),
-      ['add', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['add', '-g', '@lacrous/kimi-code@0.5.0'],
       { stdio: 'inherit' },
     );
   });
@@ -451,7 +451,7 @@ describe('runUpdatePreflight', () => {
       expect(mocks.spawn).toHaveBeenCalledWith(
         // Resolved to an absolute path and quoted for the cmd.exe shell.
         '"pnpm.cmd"',
-        ['add', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+        ['add', '-g', '@lacrous/kimi-code@0.5.0'],
         { stdio: 'inherit', shell: true },
       );
     } finally {
@@ -470,7 +470,7 @@ describe('runUpdatePreflight', () => {
     await runUpdatePreflight('0.4.0', options);
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^yarn(\.cmd)?$/),
-      ['global', 'add', '@moonshot-ai/kimi-code@0.5.0'],
+      ['global', 'add', '@lacrous/kimi-code@0.5.0'],
       { stdio: 'inherit' },
     );
   });
@@ -486,7 +486,7 @@ describe('runUpdatePreflight', () => {
     await runUpdatePreflight('0.4.0', options);
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^bun(\.exe)?$/),
-      ['add', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['add', '-g', '@lacrous/kimi-code@0.5.0'],
       { stdio: 'inherit' },
     );
   });
@@ -521,7 +521,7 @@ describe('runUpdatePreflight', () => {
         ['__update_download', '0.5.0', '--manual'],
         expect.objectContaining({ stdio: 'inherit' }),
       );
-      expect(stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.5.0');
+      expect(stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.5.0');
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
     }
@@ -544,7 +544,7 @@ describe('runUpdatePreflight', () => {
         ['__update_download', '0.5.0', '--manual'],
         expect.objectContaining({ stdio: 'inherit' }),
       );
-      expect(stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.5.0');
+      expect(stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.5.0');
       expect(stdout.join('')).not.toContain('Auto-update is not supported');
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
@@ -582,7 +582,7 @@ describe('runUpdatePreflight', () => {
     mocks.detectInstallSource.mockResolvedValue('unsupported');
     const { stdout, options } = captureOutput();
     await expect(runUpdatePreflight('0.4.0', options)).resolves.toBe('continue');
-    expect(stdout.join('')).toContain('npm install -g @moonshot-ai/kimi-code@0.5.0');
+    expect(stdout.join('')).toContain('npm install -g @lacrous/kimi-code@0.5.0');
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
@@ -608,7 +608,7 @@ describe('runUpdatePreflight', () => {
     await expect(runUpdatePreflight('0.4.0', options)).resolves.toBe('continue');
     expect(stderr.join('')).toContain('warning: failed to install');
     // A failed install must never print the "Updated …" success line.
-    expect(stdout.join('')).not.toContain('Updated @moonshot-ai/kimi-code');
+    expect(stdout.join('')).not.toContain('Updated @lacrous/kimi-code');
   });
 
   it('spawns the resolved absolute path instead of the bare command name', async () => {
@@ -626,7 +626,7 @@ describe('runUpdatePreflight', () => {
     expect(mocks.resolveCommandPath).toHaveBeenCalledWith('npm');
     expect(mocks.spawn).toHaveBeenCalledWith(
       '/usr/local/bin/npm',
-      ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['install', '-g', '@lacrous/kimi-code@0.5.0'],
       { stdio: 'inherit' },
     );
   });
@@ -645,7 +645,7 @@ describe('runUpdatePreflight', () => {
 
     expect(mocks.spawn).not.toHaveBeenCalled();
     expect(stderr.join('')).toContain('warning: failed to install');
-    expect(stdout.join('')).not.toContain('Updated @moonshot-ai/kimi-code');
+    expect(stdout.join('')).not.toContain('Updated @lacrous/kimi-code');
   });
 
   it('records a background install failure without spawning when the package manager cannot be resolved', async () => {
@@ -683,7 +683,7 @@ describe('runUpdatePreflight', () => {
     expect(promptForInstallChoice).not.toHaveBeenCalled();
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^npm(\.cmd)?$/),
-      ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['install', '-g', '@lacrous/kimi-code@0.5.0'],
       { detached: true, stdio: 'ignore' },
     );
     expect(writeUpdateInstallState).toHaveBeenCalledWith(expect.objectContaining({
@@ -722,7 +722,7 @@ describe('runUpdatePreflight', () => {
       expect(mocks.spawn).toHaveBeenCalledWith(
         // Resolved to an absolute path and quoted for the cmd.exe shell.
         '"npm.cmd"',
-        ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+        ['install', '-g', '@lacrous/kimi-code@0.5.0'],
         { detached: true, stdio: 'ignore', shell: true, windowsHide: true },
       );
     } finally {
@@ -842,7 +842,7 @@ describe('runUpdatePreflight', () => {
     expect(promptForInstallChoice).not.toHaveBeenCalled();
     expect(mocks.spawn).toHaveBeenCalledWith(
       expect.stringMatching(/^npm(\.cmd)?$/),
-      ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+      ['install', '-g', '@lacrous/kimi-code@0.5.0'],
       { detached: true, stdio: 'ignore' },
     );
   });
@@ -1100,7 +1100,7 @@ describe('runUpdatePreflight', () => {
 
       expect(mocks.spawn).toHaveBeenCalledWith(
         expect.stringMatching(/^npm(\.cmd)?$/),
-        ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+        ['install', '-g', '@lacrous/kimi-code@0.5.0'],
         { detached: true, stdio: 'ignore' },
       );
       expect(track).toHaveBeenCalledWith('update_background_install_started', expect.objectContaining({
@@ -1226,7 +1226,7 @@ describe('runUpdatePreflight', () => {
 
       expect(mocks.spawn).toHaveBeenCalledWith(
         expect.stringMatching(/^npm(\.cmd)?$/),
-        ['install', '-g', '@moonshot-ai/kimi-code@0.5.0'],
+        ['install', '-g', '@lacrous/kimi-code@0.5.0'],
         { detached: true, stdio: 'ignore' },
       );
       expect(track).toHaveBeenCalledWith('update_background_install_started', expect.objectContaining({

@@ -13,11 +13,34 @@ export const KIMI_CODE_PROVIDER_NAME = 'managed:kimi-code';
 export const KIMI_CODE_OAUTH_KEY = 'oauth/kimi-code';
 const KIMI_CODE_SCOPED_OAUTH_KEY_PREFIX = 'oauth/kimi-code-env-';
 
-export type ManagedKimiCodeProtocol = 'kimi' | 'anthropic' | 'openai_responses';
+/**
+ * Wires a model alias may pin itself to, independent of its provider's wire.
+ *
+ * `kimi` and `openai_responses` are reachable because the managed endpoint
+ * declares them (`response` on the wire is normalized to `openai_responses`).
+ * `openai` and `google-genai` are the two remaining `ProtocolSchema` members,
+ * added so a hand-written gateway can pin a model to a wire its provider does
+ * not default to. Without them the parse below returned `undefined`, the alias
+ * fell back to the provider's wire, and a model served over a different
+ * protocol failed on first use with no way for the user to say otherwise.
+ */
+export type ManagedKimiCodeProtocol =
+  | 'kimi'
+  | 'anthropic'
+  | 'openai_responses'
+  | 'openai'
+  | 'google-genai';
 
 export function parseModelProtocol(value: unknown): ManagedKimiCodeProtocol | undefined {
   if (value === 'anthropic') return 'anthropic';
+  // The managed endpoint spells this wire `response` on the wire.
   if (value === 'response') return 'openai_responses';
+  if (value === 'openai_responses') return 'openai_responses';
+  if (value === 'openai') return 'openai';
+  if (value === 'google-genai') return 'google-genai';
+  // `kimi` has no upstream spelling — the managed endpoint never declares it,
+  // and it is accepted only when a config author writes it by hand.
+  if (value === 'kimi') return 'kimi';
   return undefined;
 }
 

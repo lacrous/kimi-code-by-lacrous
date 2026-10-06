@@ -10,7 +10,7 @@
  * pegged CPU in long sessions.
  *
  * Run:
- *   pnpm --filter @moonshot-ai/kimi-code exec vitest bench test/tui/tui-frame.bench.ts
+ *   pnpm --filter @lacrous/kimi-code exec vitest bench test/tui/tui-frame.bench.ts
  */
 
 import type { Component, Terminal } from '@moonshot-ai/pi-tui';

@@ -52,6 +52,7 @@ export const ProviderConfigSchema = z.object({
   oauth: OAuthRefSchema.optional(),
   env: StringRecordSchema.optional(),
   source: z.record(z.string(), z.unknown()).optional(),
+  protocolOverrides: z.record(z.string(), ProtocolSchema).optional(),
 });
 
 export const ProvidersSectionSchema = z.record(z.string(), ProviderConfigSchema);

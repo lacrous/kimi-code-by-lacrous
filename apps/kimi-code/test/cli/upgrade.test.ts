@@ -84,7 +84,7 @@ describe('handleUpgrade', () => {
     expect(deps.promptForInstallChoice).toHaveBeenCalledWith({
       currentVersion: '0.4.0',
       target: { version: '0.5.0' },
-      installCommand: 'npm install -g @moonshot-ai/kimi-code@0.5.0',
+      installCommand: 'npm install -g @lacrous/kimi-code@0.5.0',
       installSource: 'npm-global',
     });
     expect(deps.installUpdate).toHaveBeenCalledWith('npm-global', '0.5.0', 'darwin');
@@ -105,7 +105,7 @@ describe('handleUpgrade', () => {
       targetVersion: '0.5.0',
       source: 'npm-global',
     }));
-    expect(stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.5.0');
+    expect(stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.5.0');
     expect(stderr.join('')).toBe('');
   });
 
@@ -154,7 +154,7 @@ describe('handleUpgrade', () => {
       target_version: '0.5.0',
       source: 'unsupported',
     }));
-    expect(stdout.join('')).toContain('To update manually, run: npm install -g @moonshot-ai/kimi-code@0.5.0');
+    expect(stdout.join('')).toContain('To update manually, run: npm install -g @lacrous/kimi-code@0.5.0');
   });
 
   it('prints the manual update command without prompting when not interactive, and installs directly with yes', async () => {
@@ -169,7 +169,7 @@ describe('handleUpgrade', () => {
       target_version: '0.5.0',
       source: 'npm-global',
     }));
-    expect(stdout.join('')).toContain('To update manually, run: npm install -g @moonshot-ai/kimi-code@0.5.0');
+    expect(stdout.join('')).toContain('To update manually, run: npm install -g @lacrous/kimi-code@0.5.0');
 
     const yesRun = captureOutput();
     const yesDeps = createDeps({ latest: '0.5.0', source: 'npm-global', isInteractive: false });
@@ -183,7 +183,7 @@ describe('handleUpgrade', () => {
       target_version: '0.5.0',
       source: 'npm-global',
     }));
-    expect(yesRun.stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.5.0');
+    expect(yesRun.stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.5.0');
   });
 
   it('returns a failing exit code when the foreground install fails', async () => {
@@ -197,7 +197,7 @@ describe('handleUpgrade', () => {
     await expect(handleUpgrade('0.4.0', { ...deps, ...writable })).resolves.toBe(1);
 
     expect(stderr.join('')).toContain(
-      'warning: failed to install @moonshot-ai/kimi-code@0.5.0: npm exited with code 1',
+      'warning: failed to install @lacrous/kimi-code@0.5.0: npm exited with code 1',
     );
     expect(deps.track).toHaveBeenCalledWith('upgrade_command_failed', expect.objectContaining({
       target_version: '0.5.0',
@@ -208,6 +208,24 @@ describe('handleUpgrade', () => {
       targetVersion: '0.5.0',
       source: 'npm-global',
     }));
+  });
+
+  it('explains that self-update is disabled instead of reporting a check failure', async () => {
+    const { stdout, stderr, writable } = captureOutput();
+    const deps = createDeps();
+    // No injected refreshUpdateCache: this exercises the real gate.
+    const { refreshUpdateCache: _omitted, ...rest } = deps;
+
+    await expect(handleUpgrade('0.4.0', { ...rest, ...writable })).resolves.toBe(1);
+
+    const out = stdout.join('');
+    expect(out).toContain('does not self-update');
+    expect(out).toContain('npm install -g @lacrous/kimi-code@latest');
+    // A deliberate design, not a failed check: reporting it as one sends
+    // the user hunting a network problem they do not have.
+    expect(out).not.toContain('failed to check for updates');
+    expect(stderr.join('')).toBe('');
+    expect(deps.installUpdate).not.toHaveBeenCalled();
   });
 
   it('returns a failing exit code when checking the latest version fails', async () => {
@@ -244,6 +262,6 @@ describe('handleUpgrade', () => {
     await expect(handleUpgrade('0.4.0', { ...deps, ...writable })).resolves.toBe(0);
 
     expect(deps.installUpdate).toHaveBeenCalledWith('npm-global', '0.5.0', 'darwin');
-    expect(stdout.join('')).toContain('Updated @moonshot-ai/kimi-code to 0.5.0');
+    expect(stdout.join('')).toContain('Updated @lacrous/kimi-code to 0.5.0');
   });
 });

@@ -137,7 +137,7 @@ describe('native release artifacts', () => {
       env: { ...process.env, KIMI_CODE_BUILD_TARGET: target },
     });
 
-    await execFileAsync(process.execPath, [manifestScript, artifactsDir, '@moonshot-ai/kimi-code@0.5.0']);
+    await execFileAsync(process.execPath, [manifestScript, artifactsDir, '@lacrous/kimi-code@0.5.0']);
 
     const zstBytes = readFileSync(resolve(artifactsDir, `kimi-code-${target}.zst`));
     expect(zstdDecompressSync(zstBytes).toString('utf-8')).toBe(binaryContent);
@@ -159,7 +159,7 @@ describe('native release artifacts', () => {
     };
     expect(manifest).toEqual({
       version: '0.5.0',
-      tag: '@moonshot-ai/kimi-code@0.5.0',
+      tag: '@lacrous/kimi-code@0.5.0',
       platforms: {
         [target]: {
           filename: `kimi-code-${target}`,

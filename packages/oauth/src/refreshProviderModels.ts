@@ -10,9 +10,11 @@ import {
 } from './custom-registry';
 import {
   applyDiscoveredModels,
+  applyProtocolOverrides,
   fetchDiscoveredModels,
   normalizeDiscoveryBaseUrl,
   type DiscoveryAuthStyle,
+  type ProtocolOverrideMap,
 } from './discover-models';
 import {
   applyManagedApiKeyProviderModels,
@@ -20,7 +22,9 @@ import {
   fetchManagedKimiCodeModels,
   KIMI_CODE_PLATFORM_ID,
   KIMI_CODE_PROVIDER_NAME,
+  parseModelProtocol,
   resolveKimiCodeRuntimeAuth,
+  type ManagedKimiCodeProtocol,
   type ManagedKimiConfigShape,
   type ManagedKimiModelAlias,
   type ManagedKimiOAuthRef,
@@ -96,6 +100,12 @@ interface ProviderView {
   readonly oauth?: ManagedKimiOAuthRef;
   readonly source?: unknown;
   readonly env?: unknown;
+  /**
+   * Declared per-model wire pins. Read as a plain record and narrowed by
+   * `ProtocolSchema` at the config boundary, so a hand-edited config carrying
+   * an unknown wire drops that key instead of poisoning the alias.
+   */
+  readonly protocolOverrides?: unknown;
 }
 
 /**
@@ -151,6 +161,30 @@ const DISCOVERABLE_PROVIDER_TYPES: ReadonlySet<string> = new Set([
  * single model alias must survive discovery untouched.
  */
 const ENV_OVERLAY_PROVIDER_ID = '__kimi_env__';
+
+/**
+ * Narrows a provider's declared `protocolOverrides` to known wires.
+ *
+ * `ProtocolSchema` validates the map at the config boundary, but a config can
+ * also be hand-edited or come from an older build, so the value is re-checked
+ * here. An unknown wire drops its own key rather than failing the whole
+ * refresh: one typo must not cost the user every model on that provider.
+ */
+function protocolOverridesFor(
+  provider: ProviderView,
+): ProtocolOverrideMap | undefined {
+  const raw = provider.protocolOverrides;
+  if (!isRecord(raw)) return undefined;
+  const out: Record<string, ManagedKimiCodeProtocol> = {};
+  for (const [pattern, wire] of Object.entries(raw)) {
+    const parsed = parseModelProtocol(wire);
+    // `kimi` is a provider wire, not a `Protocol` member: ProtocolSchema rejects
+    // it at the config boundary, so accepting it here would persist a pin the
+    // config cannot represent.
+    if (parsed !== undefined && parsed !== 'kimi') out[pattern] = parsed;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 /**
  * True when a provider record is a hand-written OpenAI-compatible entry whose
@@ -792,10 +826,18 @@ export async function refreshProviderModels(
       });
       if (models.length === 0) continue;
 
+      // `/models` cannot express a per-model wire, so a gateway that serves
+      // part of its catalog over another protocol is described by this
+      // provider-level map instead. Applied after the fetch and before the
+      // write, so the override lands on the alias in the same atomic write
+      // that publishes the model list.
+      const withOverrides = applyProtocolOverrides(models, protocolOverridesFor(provider));
+      if (withOverrides.length === 0) continue;
+
       config = await rebaseSelectionAfterFetch(host, config);
       const aliasPrefix = `${providerId}/`;
       const next = structuredClone(config);
-      applyDiscoveredModels(next, providerId, models, aliasPrefix);
+      applyDiscoveredModels(next, providerId, withOverrides, aliasPrefix);
       const refreshedAliasKeys = providerRefreshAliasKeys(config, next, providerId, aliasPrefix);
       restoreProviderAliases(
         next,

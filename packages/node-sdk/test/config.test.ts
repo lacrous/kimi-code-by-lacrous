@@ -69,4 +69,48 @@ api_key_env = "ACME_API_KEY"
     await expect(rpc.validateConfigToml({ text })).resolves.toBeUndefined();
     expect(parseConfigString(text).providers['acme']?.apiKeyEnv).toBe('ACME_API_KEY');
   });
+
+  it('keeps a provider per-model wire override through config parsing', async () => {
+    // The SDK schema is a narrower mirror of the engine's; while it lacked
+    // this field the pin was dropped on the way in, so a gateway's
+    // cross-protocol models silently reverted to the provider's own wire.
+    const rpc = createKimiConfigRpc();
+    const text = `
+[providers.zen]
+type = "openai"
+base_url = "https://zen.example.test/v1"
+
+[providers.zen.protocolOverrides]
+"claude-*" = "anthropic"
+
+[models."zen/claude-sonnet-4"]
+provider = "zen"
+model = "claude-sonnet-4"
+max_context_size = 200000
+protocol = "anthropic"
+`;
+
+    await expect(rpc.validateConfigToml({ text })).resolves.toBeUndefined();
+    expect(parseConfigString(text).providers['zen']?.protocolOverrides).toEqual({
+      'claude-*': 'anthropic',
+    });
+    expect(parseConfigString(text).models?.['zen/claude-sonnet-4']?.protocol).toBe('anthropic');
+  });
+
+  it('accepts every wire the engine allows on an alias protocol', async () => {
+    const rpc = createKimiConfigRpc();
+    for (const wire of ['anthropic', 'openai', 'openai_responses', 'google-genai']) {
+      const text = `
+[providers.gw]
+type = "openai"
+
+[models.m]
+provider = "gw"
+model = "m"
+max_context_size = 1000
+protocol = "${wire}"
+`;
+      await expect(rpc.validateConfigToml({ text }), wire).resolves.toBeUndefined();
+    }
+  });
 });
