@@ -152,7 +152,8 @@ vi.mock('../../src/migration/index', async (importOriginal) => ({
   detectPendingMigration: mocks.detectPendingMigration,
 }));
 
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
   execFileSync: mocks.execFileSync,
   spawnSync: mocks.spawnSync,
 }));
