@@ -236,6 +236,80 @@ node apps/kimi-code/dist/main.mjs --version
 > ```sh
 > git clone --branch lite --single-branch https://github.com/lacrous/kimi-code-by-lacrous.git
 > ```
+
+### One-shot install
+
+`install.sh` installs the computer-use tools, checks the Node toolchain, and builds the
+CLI from this checkout:
+
+```sh
+./install.sh
+```
+
+| Flag | Effect |
+|---|---|
+| `--check` | Report what is present and what is missing. Changes nothing |
+| `--tools` | Install only the computer-use tools |
+| `--no-build` | Install the tools, skip the pnpm build |
+| `--vm` | Also create a disposable VM for the autonomous-agent work (see below) |
+
+It installs into this checkout and a user-local prefix
+(`~/.local/opt/kimi-computer-tools`) — it never touches an already installed
+`kimi`, and never writes outside those paths. Without passwordless `sudo` it
+falls back to `apt-get download` plus `dpkg-deb -x`, so it works unprivileged;
+it will not prompt for a password.
+
+Run it whenever you want to know the state of the machine:
+
+```sh
+./install.sh --check
+```
+
+#### Computer-use tools
+
+`xdotool`, `wmctrl`, `x11-apps` (for `xwd`) and ImageMagick. ImageMagick's
+`import` is the screenshot path, and its package name varies by release
+(`imagemagick-7.q16` on Ubuntu 26.04), so the script resolves it rather than
+hardcoding one.
+
+The tools stay **off by default**. Enable them per shell:
+
+```sh
+export KIMI_CODE_EXPERIMENTAL_COMPUTER_USE=1
+export PATH="$HOME/.local/opt/kimi-computer-tools/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.local/opt/kimi-computer-tools/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+pnpm run kimi
+```
+
+A test asserts the feature contributes zero tools when the flag is off, so a
+machine without computer control is unchanged.
+
+#### Disposable VM
+
+`./install.sh --vm` creates a 40 GB sparse qcow2 disk and a launcher for an
+Ubuntu 24.04 desktop VM with 4 vCPU, 8 GB RAM, port-forwarded SSH on 2222, and
+a disposable profile for the browser.
+
+Hardware acceleration needs `/dev/kvm`, which on most distributions requires
+membership of the `kvm` group:
+
+```sh
+sudo usermod -aG kvm "$(id -un)"   # then log out and back in
+```
+
+Without it the VM still runs, under software emulation, and is slow. The script
+detects this and says so rather than starting a VM that appears to hang.
+
+### Running this fork
+
+```sh
+pnpm run kimi              # the CLI from this checkout
+pnpm run kimi -- --version
+```
+
+`pnpm run kimi` uses `scripts/kimi-dev.mjs`, which runs against an isolated
+`KIMI_CODE_HOME` so a development run never touches an installed `kimi`'s
+configuration.
 >
 > Both branches have byte-identical content; only the history differs.
 

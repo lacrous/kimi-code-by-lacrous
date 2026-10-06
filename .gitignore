@@ -45,3 +45,6 @@ handover.md
 *-mockup.html
 *-demo.html
 *-demos.html
+
+# Disposable VM created by install.sh --vm (disk images and ISOs, tens of GB)
+.vm/

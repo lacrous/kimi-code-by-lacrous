@@ -822,7 +822,9 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
 
   provider
     .command('add-builtin <providerId>')
-    .description(`Configure a built-in provider (${Object.keys(BUILT_IN_PROVIDERS).join(', ')}).`)
+    .description(
+      `Configure a built-in provider (${BUILT_IN_PROVIDERS.map((p) => p.id).join(', ')}).`,
+    )
     .option('--api-key <key>', 'API key. Falls back to KIMI_REGISTRY_API_KEY; omit when using --api-key-env.')
     .option('--api-key-env <VAR>', 'Read the API key from this environment variable instead of storing it.')
     .action(async (providerId: string, options: { apiKey?: string; apiKeyEnv?: string }) => {
