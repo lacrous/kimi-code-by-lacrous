@@ -4,11 +4,11 @@
 
 ### Minor Changes
 
-- Behind `KIMI_CODE_EXPERIMENTAL_COMPUTER_USE`, Kimi can use the desktop: capture the screen (works on Ubuntu's default Wayland session, with `--check-screen` to verify capture works), click, type, press keys, launch applications, and drive a browser it launches itself with a disposable profile so the user's own browser session is untouched, addressing elements by role, name, node id or text over a Chrome DevTools Protocol backend.
+- Behind `KIMI_CODE_EXPERIMENTAL_COMPUTER_USE`, Kimi can use the desktop: capture the screen (works on Ubuntu's default Wayland session), click, type, press keys, launch applications, and drive a browser it launches itself with a disposable profile so the user's own browser session is untouched, addressing elements by role, name, node id or text over a Chrome DevTools Protocol backend.
 
 - Behind `KIMI_CODE_EXPERIMENTAL_GOAL_VERIFICATION`, an autonomous run is supervised between turns — continue, complete, block, or stop on deadline, budget, action limit or a repeating failure — and a completion claim is checked against recorded evidence instead of taken at its word: a claim the machine can disprove is refused so the model can fix it, while goals that are not machine-checkable still complete without deadlocking the run.
 
-- `install.sh` becomes a one-shot installer for the computer-use tools, the Node toolchain, the CLI, and optionally a disposable VM: it works unprivileged without password prompts, resolves ImageMagick's package name per release, combines `--tools` with `--vm`, and installs Node itself via fnm when the system one is below the repo's floor.
+- `install.sh` becomes a one-shot installer for the computer-use tools, the Node toolchain, the CLI, and optionally a disposable VM: it works unprivileged without password prompts, resolves ImageMagick's package name per release, combines `--tools` with `--vm`, and installs Node itself via fnm when the system one is below the repo's floor; `--check` reports what is present, and `--check-screen` tests whether screen capture works on the current display.
 
 - Built-in provider vendors can now declare per-model wire overrides, so a gateway that serves part of its catalog over a different protocol than its default (OpenCode Zen serving Claude models over Anthropic Messages) works on first use instead of being listed and then failing.
 
