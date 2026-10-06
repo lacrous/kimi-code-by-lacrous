@@ -275,14 +275,31 @@ describe('server-v2 /api/v1 model/provider catalog', () => {
 
   it('returns an empty refresh result through the providers:refresh route', async () => {
     await boot(CATALOG_TOML);
-    const { status, body } = await postJson<{
-      changed: unknown[];
-      unchanged: unknown[];
-      failed: unknown[];
-    }>('/api/v1/providers:refresh', {});
-    expect(status).toBe(200);
-    expect(body.code).toBe(0);
-    expect(body.data).toEqual({ changed: [], unchanged: [], failed: [] });
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!url.includes('api.example.test')) return realFetch(input, init);
+        return new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    try {
+      const { status, body } = await postJson<{
+        changed: unknown[];
+        unchanged: unknown[];
+        failed: unknown[];
+      }>('/api/v1/providers:refresh', {});
+      expect(status).toBe(200);
+      expect(body.code).toBe(0);
+      expect(body.data).toEqual({ changed: [], unchanged: [], failed: [] });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   function catalogStub(): IModelCatalogType {

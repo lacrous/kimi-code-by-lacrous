@@ -941,7 +941,7 @@ describe('refreshAllProviderModels', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('does not refresh API-key providers pointing at non-managed endpoints', async () => {
+  it('discovers models for API-key providers pointing at non-managed endpoints', async () => {
     vi.stubEnv('KIMI_CODE_BASE_URL', 'https://api.managed.example.test/coding/v1');
     const host = makeRefreshHost({
       providers: {
@@ -960,7 +960,16 @@ describe('refreshAllProviderModels', () => {
       telemetry: true,
     } as unknown as KimiConfig);
 
-    const fetchMock = vi.fn<FetchMock>();
+    const fetchMock = vi.fn<FetchMock>(async (input) => {
+      const url = fetchInputUrl(input);
+      const modelId = url.startsWith('https://gateway.example.test/v1')
+        ? 'gateway-model'
+        : 'platform-model';
+      return new Response(JSON.stringify({ data: [{ id: modelId }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await refreshAllProviderModels({
@@ -970,8 +979,12 @@ describe('refreshAllProviderModels', () => {
       resolveOAuthToken: vi.fn(),
     });
 
-    expect(result).toEqual({ changed: [], unchanged: [], failed: [] });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.failed).toEqual([]);
+    expect(result.changed).toEqual([
+      { providerId: 'gateway', providerName: 'gateway', added: 1, removed: 0 },
+      { providerId: 'moonshot-lookalike', providerName: 'moonshot-lookalike', added: 1, removed: 0 },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes a hand-written managed:kimi-code provider that uses an API key instead of OAuth', async () => {
