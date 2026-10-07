@@ -9,7 +9,7 @@ Last updated: 2026-07-16
 The `0.5.x` VS Code extension launched a separately installed Python Kimi CLI
 and communicated with it over stdio. That architecture duplicated runtime
 installation, configuration, authentication, and session behavior between the
-editor and Kimi Code.
+editor and Lacrous Kimi Code.
 
 Version `0.6.0` moves the extension into this monorepo under `apps/vscode` and
 runs the stable TypeScript v1 engine through `@moonshot-ai/kimi-code-sdk` in the
@@ -27,8 +27,8 @@ is not a release checklist or a transcript of the implementation process.
 - Preserve the existing VS Code commands, shortcuts, Webview workflows, editor
   integration, session management, MCP management, and file changes panel.
 - Replace the Python/stdio host with the in-process v1 Node SDK.
-- Share Kimi Code configuration, authentication, MCP configuration, and
-  sessions with the TUI when both processes resolve the same Kimi Code home.
+- Share Lacrous Kimi Code configuration, authentication, MCP configuration, and
+  sessions with the TUI when both processes resolve the same Lacrous Kimi Code home.
 - Reuse the shared legacy migration package instead of maintaining a VS
   Code-specific session translator.
 - Add only the smallest SDK/core APIs needed to preserve existing VS Code
@@ -60,7 +60,7 @@ flowchart LR
   Host["VS Code Extension Host<br/>Node process"]
   SDK["@moonshot-ai/kimi-code-sdk<br/>KimiHarness and Session"]
   Core["agent-core-v2"]
-  Home["Kimi Code home<br/>config, auth, MCP, sessions"]
+  Home["Lacrous Kimi Code home<br/>config, auth, MCP, sessions"]
 
   UI <-->|"postMessage RPC and events"| Host
   Host -->|"in-process calls"| SDK
@@ -115,9 +115,9 @@ into runtime code or packaging scripts.
 
 ## Data ownership
 
-### Shared Kimi Code home
+### Shared Lacrous Kimi Code home
 
-The SDK resolves the home directory using the normal Kimi Code rules:
+The SDK resolves the home directory using the normal Lacrous Kimi Code rules:
 
 1. system-level `KIMI_CODE_HOME`, when set;
 2. otherwise `~/.kimi-code`.
@@ -131,11 +131,11 @@ only when they resolve the same home:
 - authentication state
 - `sessions/`
 - `session_index.jsonl`
-- other SDK-owned Kimi Code data
+- other SDK-owned Lacrous Kimi Code data
 
 Remote SSH, WSL, and Dev Container installations use the environment and home
 of the remote Extension Host. They do not automatically share the local
-machine's Kimi Code home.
+machine's Lacrous Kimi Code home.
 
 ### VS Code-owned state
 
@@ -243,7 +243,7 @@ maintain another config/session translator.
 - default source: `~/.kimi`;
 - optional additional source: a valid legacy `KIMI_SHARE_DIR` from the removed
   VS Code setting;
-- target: the SDK-resolved Kimi Code home.
+- target: the SDK-resolved Lacrous Kimi Code home.
 
 Migration covers the shared config, MCP config, user history, supported skills,
 and sessions. Existing target data wins according to the shared migration
@@ -252,7 +252,7 @@ legacy source.
 
 On first launch, the extension detects work without mutating either home and
 offers **Migrate now** or **Later**. The command
-`Kimi Code: Migrate Legacy Data` remains available for manual runs and retries.
+`Lacrous Kimi Code: Migrate Legacy Data` remains available for manual runs and retries.
 
 The shared marker `.migrated-to-kimi-code` can contain multiple target homes.
 This prevents duplicate migration when the TUI migrated the same source first,
@@ -276,7 +276,7 @@ feature.
 ### New sessions
 
 Baselines are stored under the extension's `globalStorage`, namespaced by the
-resolved Kimi Code home and session ID. The home namespace prevents sessions
+resolved Lacrous Kimi Code home and session ID. The home namespace prevents sessions
 with the same ID in different homes from sharing baseline state.
 
 The session runtime observes `tool.call.started` for the explicit `Write` and
@@ -385,7 +385,7 @@ replaces them:
 
 1. The Webview never imports the Node SDK or gains direct Node/file/auth access.
 2. `apps/vscode` never imports engine packages directly.
-3. Shared config and sessions live in the SDK-resolved Kimi Code home; editor
+3. Shared config and sessions live in the SDK-resolved Lacrous Kimi Code home; editor
    preferences and baselines remain VS Code-owned.
 4. Legacy migration translation stays in `packages/migration-legacy`.
 5. Session storage is accessed through SDK/core APIs, not parsed or mutated by

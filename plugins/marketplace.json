@@ -15,7 +15,7 @@
       "tier": "official",
       "displayName": "Kimi Browser Extension",
       "version": "2.0.11",
-      "description": "Control your real browser from Kimi Code.",
+      "description": "Control your real browser from Lacrous Kimi Code.",
       "keywords": ["browser", "automation", "webbridge"],
       "source": "./official/kimi-webbridge"
     },

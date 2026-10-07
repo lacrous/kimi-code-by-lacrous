@@ -1,20 +1,20 @@
 ---
 name: import-from-cc-codex
-description: Import Claude Code and Codex instructions, skills, and MCP settings into Kimi Code.
+description: Import Claude Code and Codex instructions, skills, and MCP settings into Lacrous Kimi Code.
 disable-model-invocation: true
 ---
 
 # Import from Claude Code and Codex
 
 The user invoked `/import-from-cc-codex` (or `/skill:import-from-cc-codex`).
-Help them migrate selected local Claude Code and Codex assets into Kimi Code.
+Help them migrate selected local Claude Code and Codex assets into Lacrous Kimi Code.
 This skill is intentionally conservative: it imports only instructions, skills,
 and MCP server declarations from `.claude` / `.codex` surfaces, with a user
 preview before any write.
 
 ## Non-negotiable rules
 
-- Do **not** migrate `.agents` content. Kimi Code already supports `.agents`
+- Do **not** migrate `.agents` content. Lacrous Kimi Code already supports `.agents`
   skills and AGENTS files by default.
 - Do **not** migrate Claude custom commands (`.claude/commands/**`). They are
   out of scope for this importer.
@@ -23,7 +23,7 @@ preview before any write.
 - Do **not** run or install anything from the source directories.
 - Do **not** write anything until the user has chosen what to migrate, reviewed
   the final preview, and explicitly confirmed applying it.
-- Only write under Kimi Code targets:
+- Only write under Lacrous Kimi Code targets:
   - User-global: `$KIMI_CODE_HOME` if set, otherwise `~/.kimi-code`.
   - Project instructions/skills: `<project root>/.kimi-code`, where the project
     root is the nearest parent directory containing `.git`; if no `.git` exists,
@@ -271,7 +271,7 @@ When the user confirms:
 - Do not write MCP entries. Show the prepared `/mcp-config` follow-up command
   and mark MCP import as pending user action.
 - Report exactly what changed and what was skipped.
-- Tell the user to start a new session (for example `/new`) or restart Kimi Code
+- Tell the user to start a new session (for example `/new`) or restart Lacrous Kimi Code
   for newly imported skills, instructions, and MCP servers to be picked up.
 
 ## Output style

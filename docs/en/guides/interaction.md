@@ -1,6 +1,6 @@
 # Interaction and input
 
-Kimi Code CLI runs as an interactive TUI (terminal user interface) built around three components: the input box, the conversation view, and the status bar. This page covers how to enter text, paste media, navigate the approval flow, and switch between modes.
+Lacrous Kimi Code CLI runs as an interactive TUI (terminal user interface) built around three components: the input box, the conversation view, and the status bar. This page covers how to enter text, paste media, navigate the approval flow, and switch between modes.
 
 ## Input box basics
 
@@ -10,16 +10,16 @@ The input box accepts free-form text. Press `Enter` to send, or `Shift-Enter` / 
 
 ## Pasting images and video
 
-Kimi Code CLI supports pasting images and video directly into the input box, so you can discuss screenshots, UI mockups, architecture diagrams, or code demos without uploading or converting files first.
+Lacrous Kimi Code CLI supports pasting images and video directly into the input box, so you can discuss screenshots, UI mockups, architecture diagrams, or code demos without uploading or converting files first.
 
-**Video input is a distinctive Kimi Code capability** — you can paste a video clip and have the model analyze its content, UI flow, or code walkthrough.
+**Video input is a distinctive Lacrous Kimi Code capability** — you can paste a video clip and have the model analyze its content, UI flow, or code walkthrough.
 
 How to paste:
 
 - **macOS / Linux**: `Ctrl-V`
 - **Windows**: `Alt-V`
 
-After pasting, the input box shows a placeholder that you can edit like normal text; on submit, the placeholder is replaced with the actual content. A plain-text clipboard falls back to ordinary paste. Media support depends on the current model's multimodal capabilities (`image_in` / `video_in`); it is enabled by default when you are logged in to a Kimi Code account.
+After pasting, the input box shows a placeholder that you can edit like normal text; on submit, the placeholder is replaced with the actual content. A plain-text clipboard falls back to ordinary paste. Media support depends on the current model's multimodal capabilities (`image_in` / `video_in`); it is enabled by default when you are logged in to a Lacrous Kimi Code account.
 
 If a conversation accumulates more than 20 MB of media, the oldest images and videos are omitted from requests automatically, and a warning is shown when this happens.
 
@@ -47,7 +47,7 @@ Type `@` to trigger file-path completion; the selected path is inserted in relat
 
 - **Where it works**: both git and non-git directories; hidden paths are included, `.git` is excluded
 - **Folder suggestions**: end with `/`, so you can keep completing paths inside them
-- **Fallback**: while the fast search helper is still downloading, Kimi Code falls back to a basic filesystem scan
+- **Fallback**: while the fast search helper is still downloading, Lacrous Kimi Code falls back to a basic filesystem scan
 
 > `@` references and slash commands are two separate mechanisms: `@` gives the agent file context, while `/` invokes built-in features or Skills.
 

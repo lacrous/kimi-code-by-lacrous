@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Currently, Kimi Code only provides security support for the latest released version.
+Currently, Lacrous Kimi Code only provides security support for the latest released version.
 
 ## Reporting a Vulnerability
 

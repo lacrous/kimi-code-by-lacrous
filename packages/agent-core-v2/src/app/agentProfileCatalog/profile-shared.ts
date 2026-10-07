@@ -104,7 +104,7 @@ export function subagentTypeNotAllowedMessage(
 const WINDOWS_NOTES =
   'IMPORTANT: You are on Windows. The Bash tool runs through Git Bash, so use Unix shell syntax inside Bash commands — `/dev/null` not `NUL`, and forward slashes in paths. For file operations, always prefer the built-in tools (Read, Write, Edit, Glob, Grep) over Bash commands — they work reliably across all platforms.';
 
-export const DEFAULT_PRODUCT_NAME = 'Kimi Code CLI';
+export const DEFAULT_PRODUCT_NAME = 'Lacrous Kimi Code CLI';
 
 export const DEFAULT_REPLY_STYLE_GUIDE =
   "Your text replies render as Markdown in the user's terminal. Keep structure light and shallow — deep nesting, large tables, and heavy headings read poorly there. Cite code locations as `path/to/file.ts:42` so the user can navigate to them. Do not use emoji unless the user does first or asks for it.";

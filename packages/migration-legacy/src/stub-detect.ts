@@ -4,7 +4,7 @@ import { parse as parseToml } from 'smol-toml';
 // Verbatim from packages/kimi-core/src/harness/configs/toml.ts:42
 export const DEFAULT_CONFIG_FILE_TEXT =
   '# ~/.kimi-code/config.toml\n' +
-  '# Runtime settings for Kimi Code.\n' +
+  '# Runtime settings for Lacrous Kimi Code.\n' +
   '# This file starts empty so built-in defaults can apply.\n' +
   '# Login will populate managed Kimi provider and model entries.\n';
 

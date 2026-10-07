@@ -77,7 +77,7 @@ export async function handleDoctor(deps: DoctorDeps, options: DoctorOptions): Pr
 export function registerDoctorCommand(parent: Command, deps?: Partial<DoctorDeps>): void {
   const doctor = parent
     .command('doctor')
-    .description('Validate Kimi Code configuration files.')
+    .description('Validate Lacrous Kimi Code configuration files.')
     .action(async () => {
       await runDoctorCommand(deps, {});
     });

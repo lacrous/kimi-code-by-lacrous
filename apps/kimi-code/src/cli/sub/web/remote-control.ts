@@ -56,7 +56,7 @@ export function formatRemoteControlOutput(options: RemoteControlOutputOptions): 
   return [
     '',
     `  ${title('Kimi Remote Control ready')}  ${muted(getVersion())}`,
-    `  ${muted('Use Kimi Code on this machine from your phone or another computer.')}`,
+    `  ${muted('Use Lacrous Kimi Code on this machine from your phone or another computer.')}`,
     '',
     `  ${label('1.')} Scan the QR code, or open ${link(options.url)}`,
     `  ${label('2.')} Log in with your Kimi account`,

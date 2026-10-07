@@ -1,12 +1,12 @@
 # Agent 与 subagent
 
-Kimi Code CLI 中的每次会话都由一个 **main agent** 驱动。main agent 理解用户意图、规划步骤、调用工具，并在需要时向外派发 **subagent** 处理更聚焦的子任务：探索一个陌生代码库、并行审阅多处实现、或在不触碰主上下文的情况下规划一次大型重构。
+Lacrous Kimi Code CLI 中的每次会话都由一个 **main agent** 驱动。main agent 理解用户意图、规划步骤、调用工具，并在需要时向外派发 **subagent** 处理更聚焦的子任务：探索一个陌生代码库、并行审阅多处实现、或在不触碰主上下文的情况下规划一次大型重构。
 
 subagent 接受 main agent 给出的任务描述，在自己的独立上下文里工作，最后把结论返回。它不会与用户直接对话，中间的思考和工具调用记录也不会混入 main agent 的历史。
 
 ## 内置 subagent
 
-Kimi Code CLI 内置三种 subagent，开箱即用，分别面向不同任务形态：
+Lacrous Kimi Code CLI 内置三种 subagent，开箱即用，分别面向不同任务形态：
 
 - **`coder`**：默认 subagent，通用软件工程助手，可以读写文件、执行命令、搜索代码并落地具体改动。
 - **`explore`**：代码库探索专用，只做只读操作，不修改任何文件。适合在不改动文件的前提下快速搜索、阅读和总结仓库。
@@ -55,7 +55,7 @@ subagent 的权限规则继承自 main agent：main agent 通过 `/permission` �
 
 ### Agent 目录
 
-Kimi Code CLI 按作用域发现 Agent 文件，作用域越具体，优先级越高：**显式（`--agent-file`）> 项目 > 额外 > 用户 > Plugin > 内置**。两个文件定义了相同的 `name` 时，高优先级作用域胜出。每个目录都会递归扫描 `.md` 文件。
+Lacrous Kimi Code CLI 按作用域发现 Agent 文件，作用域越具体，优先级越高：**显式（`--agent-file`）> 项目 > 额外 > 用户 > Plugin > 内置**。两个文件定义了相同的 `name` 时，高优先级作用域胜出。每个目录都会递归扫描 `.md` 文件。
 
 **用户级**（对所有项目生效）：
 
@@ -82,7 +82,7 @@ extra_agent_dirs = ["~/team-agents", ".agents/team-agents"]
 另外，`$KIMI_CODE_HOME/SYSTEM.md` 可永久覆盖默认 main agent 的系统提示词，它不参与 Agent 文件发现，优先级交互见 [SYSTEM.md 小节](#用-systemmd-覆盖-main-agent-的系统提示词)。
 
 ::: warning 信任模型
-Agent 文件属于提示词配置，而项目级文件来自仓库本身，包括你刚刚 clone、尚不可信的仓库。项目作用域的文件可以完全接管内置 Agent：命名为 `agent.md` 并声明 `override: true` 会替换**默认 main agent 的整个系统提示词**，`coder.md` 加 `override: true` 则会替换默认 subagent 类型。不同于把 `AGENTS.md` 内容作为参考资料注入提示词，override 文件本身就是系统提示词，且不写 `tools` 的文件保留全部工具。在不熟悉的仓库中运行 Kimi Code 之前，请以对待脚本同样的谨慎检查其中的 `.kimi-code/agents/` 与 `.agents/agents/` 目录。
+Agent 文件属于提示词配置，而项目级文件来自仓库本身，包括你刚刚 clone、尚不可信的仓库。项目作用域的文件可以完全接管内置 Agent：命名为 `agent.md` 并声明 `override: true` 会替换**默认 main agent 的整个系统提示词**，`coder.md` 加 `override: true` 则会替换默认 subagent 类型。不同于把 `AGENTS.md` 内容作为参考资料注入提示词，override 文件本身就是系统提示词，且不写 `tools` 的文件保留全部工具。在不熟悉的仓库中运行 Lacrous Kimi Code 之前，请以对待脚本同样的谨慎检查其中的 `.kimi-code/agents/` 与 `.agents/agents/` 目录。
 :::
 
 ### Agent 文件格式

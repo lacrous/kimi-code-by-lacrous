@@ -752,7 +752,7 @@ describe('provisionManagedKimiCodeConfig', () => {
     });
 
     await expect(promise).rejects.toThrow(
-      "Kimi Code models endpoint https://api.dev.example.test/coding/v1 rejected OAuth credentials: We're unable to verify your membership benefits at this time. Please ensure your membership is active.",
+      "Lacrous Kimi Code models endpoint https://api.dev.example.test/coding/v1 rejected OAuth credentials: We're unable to verify your membership benefits at this time. Please ensure your membership is active.",
     );
     await expect(
       fetchManagedKimiCodeModels({

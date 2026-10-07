@@ -1,6 +1,6 @@
 # Plugins
 
-Plugins 把可复用的 Kimi Code CLI 能力打包成可安装单元：可以添加 [Agent Skills](./skills.md)、自定义 [Agent](./agents.md)，可以指定会话启动时自动加载的 Skill、提供系统提示词指令，也可以声明 MCP servers 提供真实工具能力。适合把工作流共享给团队、连接外部服务，或从 [官方插件](#官方插件)安装扩展。
+Plugins 把可复用的 Lacrous Kimi Code CLI 能力打包成可安装单元：可以添加 [Agent Skills](./skills.md)、自定义 [Agent](./agents.md)，可以指定会话启动时自动加载的 Skill、提供系统提示词指令，也可以声明 MCP servers 提供真实工具能力。适合把工作流共享给团队、连接外部服务，或从 [官方插件](#官方插件)安装扩展。
 
 ## 安装与管理
 
@@ -99,15 +99,15 @@ Kimi Browser Extension 分两步安装：完成上述步骤后，还需要[安�
 
 ### Kimi Datasource <Badge type="tip" text="v3.4.0" />
 
-Kimi Datasource 是 Kimi Code 官方数据插件。用自然语言直接查询金融行情、财经资讯、宏观经济、企业工商、学术文献、中国法律法规和国际组织官方数据，无需手动调用接口或申请数据账号。
+Kimi Datasource 是 Lacrous Kimi Code 官方数据插件。用自然语言直接查询金融行情、财经资讯、宏观经济、企业工商、学术文献、中国法律法规和国际组织官方数据，无需手动调用接口或申请数据账号。
 
 数据来源包括世界银行、IMF、OECD、FRED、WHO、FAO、国家统计局、Wind、S&P Capital IQ、SEC EDGAR、财新、新华财经、恒生聚源等权威机构与知名数据库，信源可溯源。
 
-> 使用前需先通过 `/login` 完成 Kimi Code 账号 OAuth 登录。数据查询会消耗 Kimi Code 套餐额度。
+> 使用前需先通过 `/login` 完成 Lacrous Kimi Code 账号 OAuth 登录。数据查询会消耗 Lacrous Kimi Code 套餐额度。
 
 #### 使用方式
 
-1. 直接用自然语言描述需求，Kimi Code 会自动调用数据能力
+1. 直接用自然语言描述需求，Lacrous Kimi Code 会自动调用数据能力
 2. 通过 `/skill:kimi-datasource` 明确触发数据查询 Skill
 
 #### 能做什么
@@ -159,7 +159,7 @@ Kimi Datasource 是 Kimi Code 官方数据插件。用自然语言直接查询�
 
 #### 计费与限制
 
-- 数据查询按次计费，消耗 Kimi Code 账号额度
+- 数据查询按次计费，消耗 Lacrous Kimi Code 账号额度
 - 插件为只读查询，不提供任何写入或交易功能
 - 技术指标（MACD、KDJ 等）及实时行情仅在交易时段内可用
 - AI 输出内容仅供参考，不构成任何投资或商业决策建议
@@ -214,7 +214,7 @@ Kimi Computer Use 让 AI 直接操作你的桌面应用，可以完成点击、�
 安装后首次使用时，Kimi Computer Use 会弹出授权窗口，按照提示操作即可：
 
 1. 点击**辅助功能**和**屏幕录制**右侧的**去授权**，在系统设置中开启这两项权限。前者用于执行点击、输入与滚动，后者用于读取屏幕内容、识别需要操作的位置。
-2. 在**接入本地 Agent**中打开 **Kimi Code** 开关，重启 Kimi Code 后生效。
+2. 在**接入本地 Agent**中打开 **Lacrous Kimi Code** 开关，重启 Lacrous Kimi Code 后生效。
 
 <div style="max-width: 380px; margin: 0 auto;">
 
@@ -257,7 +257,7 @@ Plugin 是一个带 manifest 的目录或 zip 文件。Manifest 可以放在以�
 {
   "name": "kimi-finance",
   "version": "1.0.0",
-  "description": "Finance data and analysis workflows for Kimi Code CLI",
+  "description": "Finance data and analysis workflows for Lacrous Kimi Code CLI",
   "skills": "./skills/",
   "systemPromptPath": "./SYSTEM.md",
   "sessionStart": {
@@ -312,7 +312,7 @@ Plugin 通过 `systemPrompt` 和 `systemPromptPath` 两个字段向 Agent 的系
 
 ### 两个引擎的差异
 
-系统提示词贡献在 Kimi Code 的所有界面上都生效：交互式 TUI、`kimi -p` 和 `kimi web` 都运行在 v2 引擎上。
+系统提示词贡献在 Lacrous Kimi Code 的所有界面上都生效：交互式 TUI、`kimi -p` 和 `kimi web` 都运行在 v2 引擎上。
 
 新会话和新建 Agent 会读取当前已启用 plugin 的指令，正在进行的请求继续使用已有的系统提示词。`/plugins reload` 会刷新 plugin Skill 列表，并请求重建活跃 Agent 的提示词；需要让变更在下一轮前明确收敛时使用该命令。切换 plugin 的 MCP server 不会改变系统提示词指令。
 
@@ -399,7 +399,7 @@ my-plugin/
       SKILL.md
 ```
 
-`sessionStart.skill` 在会话启动时把一个 plugin Skill 加载到 main agent，适合放置初始化说明、工作流规则，或把其他工具中的术语映射到 Kimi Code CLI。它只注入文本，不执行代码。
+`sessionStart.skill` 在会话启动时把一个 plugin Skill 加载到 main agent，适合放置初始化说明、工作流规则，或把其他工具中的术语映射到 Lacrous Kimi Code CLI。它只注入文本，不执行代码。
 
 无论 Skill 通过哪种方式加载（`sessionStart.skill`、`/skill:<name>` 或模型自动调用），`skillInstructions` 都会随该 plugin 的 Skill 一起出现。
 

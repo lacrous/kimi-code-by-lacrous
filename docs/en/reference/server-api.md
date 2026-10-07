@@ -22,7 +22,7 @@ All `/api/*` paths (including `/openapi.json` and `/asyncapi.json`) require the 
 - `GET /api/v1/healthz` (liveness probe)
 - Static web assets (non-`/api/` paths)
 
-How to carry it: REST uses the `Authorization: Bearer <token>` header; the WebSocket upgrade accepts the same header or the subprotocol `kimi-code.bearer.<token>`. Token generation and rotation are covered in [Using Kimi Code in the browser: Getting started](../guides/web.md#getting-started).
+How to carry it: REST uses the `Authorization: Bearer <token>` header; the WebSocket upgrade accepts the same header or the subprotocol `kimi-code.bearer.<token>`. Token generation and rotation are covered in [Using Lacrous Kimi Code in the browser: Getting started](../guides/web.md#getting-started).
 
 Failed authentication returns HTTP 401 with envelope code `40101`. On non-loopback binds, a source that fails authentication 10 times within 60 seconds is banned for 60 seconds, during which every request gets HTTP 429 (code `42901`).
 
@@ -2413,5 +2413,5 @@ Error semantics differ as well: `GET /api/v1/files/{file_id}` answers lookup and
 
 ## Next steps
 
-- [Using Kimi Code in the browser](../guides/web.md) — start the server and use Kimi Code in a browser
+- [Using Lacrous Kimi Code in the browser](../guides/web.md) — start the server and use Lacrous Kimi Code in a browser
 - [kimi command](./kimi-command.md#kimi-web) — all `kimi web` command-line options

@@ -29,7 +29,7 @@ Before rewriting a page, always: (1) understand why the original is structured t
 
 ## Readers
 
-Kimi Code documentation serves two overlapping audiences. Write for both simultaneously.
+Lacrous Kimi Code documentation serves two overlapping audiences. Write for both simultaneously.
 
 **Technical users** — familiar with the terminal, config files, API keys, and environment variables. Give them commands and paths directly; do not explain basics.
 
@@ -76,7 +76,7 @@ Term mapping (Chinese <-> English, and proper noun handling):
 | 完全自动 | Never Ask | yes | yes |
 | Thinking 模式 | Thinking mode | yes | yes (Thinking mode) |
 | MCP | MCP | yes | yes |
-| Kimi Code CLI | Kimi Code CLI | yes | yes |
+| Lacrous Kimi Code CLI | Lacrous Kimi Code CLI | yes | yes |
 | Agent Skills | Agent Skills | yes | yes |
 | Skill | skill | yes | no |
 | 系统提示词 | system prompt | no | no |
@@ -109,18 +109,18 @@ Term mapping (Chinese <-> English, and proper noun handling):
 
 Two distinct platforms exist and must never be mixed:
 
-| | Kimi Code platform | Kimi Open Platform |
+| | Lacrous Kimi Code platform | Kimi Open Platform |
 |---|---|---|
 | Audience | Individual developers, subscription-based | Enterprise / product integration, pay-per-token |
 | OpenAI-compatible base URL | `https://api.kimi.com/coding/v1` | `https://api.moonshot.cn/v1` |
 | Anthropic-compatible base URL | `https://api.kimi.com/coding/` | Not supported |
-| API key entry | [Kimi Code console](https://www.kimi.com/code/console) | [platform.kimi.com](https://platform.kimi.com) |
+| API key entry | [Lacrous Kimi Code console](https://www.kimi.com/code/console) | [platform.kimi.com](https://platform.kimi.com) |
 
 Rules:
-- When documenting Kimi Code CLI or VS Code: always use `api.kimi.com/coding/…`. Never write `api.moonshot.cn` in this context.
+- When documenting Lacrous Kimi Code CLI or VS Code: always use `api.kimi.com/coding/…`. Never write `api.moonshot.cn` in this context.
 - When documenting Open Platform integration: use `api.moonshot.cn/v1`.
-- Distinguish context explicitly: "in Kimi Code CLI / VS Code" vs "in third-party tools / your own product".
-- Product full names: **Kimi Code CLI** and **Kimi Code for VS Code**. Do not abbreviate to "Kimi CLI".
+- Distinguish context explicitly: "in Lacrous Kimi Code CLI / VS Code" vs "in third-party tools / your own product".
+- Product full names: **Lacrous Kimi Code CLI** and **Lacrous Kimi Code for VS Code**. Do not abbreviate to "Kimi CLI".
 
 ## Typography
 
@@ -199,9 +199,9 @@ Outline prompt:
 ```markdown
 ## Install and upgrade
 
-Kimi Code CLI requires Node.js 24.15.0 or later. We recommend using pnpm for installation and management.
+Lacrous Kimi Code CLI requires Node.js 24.15.0 or later. We recommend using pnpm for installation and management.
 
-If you haven't installed pnpm yet, please refer to the pnpm installation docs first. Install Kimi Code CLI:
+If you haven't installed pnpm yet, please refer to the pnpm installation docs first. Install Lacrous Kimi Code CLI:
 
 (code block)
 
@@ -310,8 +310,8 @@ Before shipping, verify these values match the rest of the docs:
 - **Upgrade command**: matches `guides/getting-started.md`
 - **Model ID**: use `kimi-for-coding`, not a versioned model name
 - **Login command**: `/login`, not `/setup`
-- **Product full name**: **Kimi Code CLI** or **Kimi Code for VS Code** — never "Kimi CLI"
-- **Platform URLs**: `api.kimi.com/coding/…` for Kimi Code platform; `api.moonshot.cn/v1` for Open Platform — never mix the two
+- **Product full name**: **Lacrous Kimi Code CLI** or **Lacrous Kimi Code for VS Code** — never "Kimi CLI"
+- **Platform URLs**: `api.kimi.com/coding/…` for Lacrous Kimi Code platform; `api.moonshot.cn/v1` for Open Platform — never mix the two
 
 ## Build and preview
 

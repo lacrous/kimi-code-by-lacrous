@@ -192,7 +192,7 @@ function protocolOverridesFor(
  * and a declared base URL (without one, the endpoint is the vendor default,
  * which the vendor already documents).
  *
- * The managed Kimi Code endpoint is explicitly excluded even though its shape
+ * The managed Lacrous Kimi Code endpoint is explicitly excluded even though its shape
  * matches: branch 2.5 already owns every provider pinned to it, and admitting
  * it here too would fetch and write the same provider twice in one refresh.
  * The env-overlay provider is excluded for a different reason: it is synthetic
@@ -509,11 +509,11 @@ function pickDefaultModel(
  * Refresh remote model metadata for the configured providers and persist any
  * changes through the host. Handles four provider kinds, in order:
  *
- *  1. Managed Kimi Code (OAuth) — `GET /models` against the runtime endpoint.
+ *  1. Managed Lacrous Kimi Code (OAuth) — `GET /models` against the runtime endpoint.
  *  2. Open platforms (moonshot-cn, moonshot-ai, …) — platform catalog fetch.
  *  2.5. Managed-endpoint API-key providers — hand-written `type: 'kimi'`
  *     providers (including a hand-written `managed:kimi-code` without an oauth
- *     ref) whose baseUrl is exactly the managed Kimi Code endpoint; refreshed
+ *     ref) whose baseUrl is exactly the managed Lacrous Kimi Code endpoint; refreshed
  *     via `GET /models` with the configured API key as Bearer. Only model
  *     aliases are merged; the provider record is user-owned and never
  *     rewritten.
@@ -541,7 +541,7 @@ export async function refreshProviderModels(
   let config = await host.getConfig();
 
   // ---------------------------------------------------------------------------
-  // 1. Managed Kimi Code (OAuth)
+  // 1. Managed Lacrous Kimi Code (OAuth)
   // ---------------------------------------------------------------------------
   const managedProvider = readProvider(config, KIMI_CODE_PROVIDER_NAME);
   const managedWanted = targetId === undefined || targetId === KIMI_CODE_PROVIDER_NAME;
@@ -605,7 +605,7 @@ export async function refreshProviderModels(
           });
           changed.push({
             providerId: KIMI_CODE_PROVIDER_NAME,
-            providerName: 'Kimi Code',
+            providerName: 'Lacrous Kimi Code',
             added,
             removed,
           });
@@ -707,7 +707,7 @@ export async function refreshProviderModels(
   // 2.5. Managed-endpoint API-key providers (hand-configured distributed keys)
   // ---------------------------------------------------------------------------
   // A hand-written `type: 'kimi'` provider whose baseUrl is exactly the managed
-  // Kimi Code endpoint, carrying an API key (inline, via `apiKeyEnv`, or via
+  // Lacrous Kimi Code endpoint, carrying an API key (inline, via `apiKeyEnv`, or via
   // `env.KIMI_API_KEY`) instead of an oauth ref, gets its model list refreshed
   // from `{baseUrl}/models` just like the OAuth branch. Strict baseUrl matching
   // keeps proxies / gateways with an untrusted `/models` schema out.

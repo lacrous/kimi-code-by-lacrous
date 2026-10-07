@@ -1,8 +1,8 @@
 {
   "name": "kimi-code",
   "publisher": "moonshot-ai",
-  "displayName": "Kimi Code",
-  "description": "Official Kimi Code plugin for VS Code",
+  "displayName": "Lacrous Kimi Code",
+  "description": "Official Lacrous Kimi Code plugin for VS Code",
   "version": "0.8.1",
   "private": true,
   "license": "Apache-2.0",
@@ -49,7 +49,7 @@
   "icon": "resources/kimi-icon-storefront.png",
   "contributes": {
     "configuration": {
-      "title": "Kimi Code",
+      "title": "Lacrous Kimi Code",
       "properties": {
         "kimi.yoloMode": {
           "type": "boolean",
@@ -101,51 +101,51 @@
     "commands": [
       {
         "command": "kimi.clearAllState",
-        "title": "Kimi Code: [DEBUG] Clear All State"
+        "title": "Lacrous Kimi Code: [DEBUG] Clear All State"
       },
       {
         "command": "kimi.openInTab",
-        "title": "Kimi Code: Open in New Tab",
+        "title": "Lacrous Kimi Code: Open in New Tab",
         "icon": "$(link-external)"
       },
       {
         "command": "kimi.openInSideBar",
-        "title": "Kimi Code: Open in Side Panel",
+        "title": "Lacrous Kimi Code: Open in Side Panel",
         "icon": "$(layout-sidebar-left)"
       },
       {
         "command": "kimi.focusInput",
-        "title": "Kimi Code: Focus Input",
+        "title": "Lacrous Kimi Code: Focus Input",
         "icon": "$(edit)"
       },
       {
         "command": "kimi.insertMention",
-        "title": "Kimi Code: Insert Current File",
+        "title": "Lacrous Kimi Code: Insert Current File",
         "icon": "$(mention)"
       },
       {
         "command": "kimi.newConversation",
-        "title": "Kimi Code: New Conversation",
+        "title": "Lacrous Kimi Code: New Conversation",
         "icon": "$(add)"
       },
       {
         "command": "kimi.showLogs",
-        "title": "Kimi Code: Show Logs",
+        "title": "Lacrous Kimi Code: Show Logs",
         "icon": "$(output)"
       },
       {
         "command": "kimi.resetKimi",
-        "title": "Kimi Code: Reset Kimi (in case of any issues/no response)",
+        "title": "Lacrous Kimi Code: Reset Kimi (in case of any issues/no response)",
         "icon": "$(refresh)"
       },
       {
         "command": "kimi.logout",
-        "title": "Kimi Code: Logout",
+        "title": "Lacrous Kimi Code: Logout",
         "icon": "$(sign-out)"
       },
       {
         "command": "kimi.migrateLegacyData",
-        "title": "Kimi Code: Migrate Legacy Data"
+        "title": "Lacrous Kimi Code: Migrate Legacy Data"
       }
     ],
     "keybindings": [
@@ -165,7 +165,7 @@
       "activitybar": [
         {
           "id": "kimi-sidebar",
-          "title": "Kimi Code",
+          "title": "Lacrous Kimi Code",
           "icon": "resources/kimi-icon.svg"
         }
       ]
@@ -175,7 +175,7 @@
         {
           "type": "webview",
           "id": "kimi.webview",
-          "name": "Kimi Code"
+          "name": "Lacrous Kimi Code"
         }
       ]
     },

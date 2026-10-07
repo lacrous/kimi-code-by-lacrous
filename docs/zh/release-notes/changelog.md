@@ -4,7 +4,7 @@ outline: 2
 
 # 变更记录
 
-本页记录 Kimi Code CLI 每个版本的变更内容。
+本页记录 Lacrous Kimi Code CLI 每个版本的变更内容。
 
 ## 2.1.1（2026-09-24）
 
@@ -20,7 +20,7 @@ outline: 2
 
 ### 新功能
 
-- 新增实验性全屏模式开关，可在 `/settings` 的 TUI mode 设置中开启，或在 `~/.kimi-code/tui.toml` 中设置 `tui_mode = "fullscreen"`，重启 Kimi Code 后生效。
+- 新增实验性全屏模式开关，可在 `/settings` 的 TUI mode 设置中开启，或在 `~/.kimi-code/tui.toml` 中设置 `tui_mode = "fullscreen"`，重启 Lacrous Kimi Code 后生效。
 - 全屏模式下，点击折叠块即可展开或收起。
 - 全屏界面新增可点击的 "Jump to bottom" 指示器。
 
@@ -640,7 +640,7 @@ outline: 2
 
 ### 新功能
 
-- 新增内置 `/check-kimi-code-docs` Skill，自动基于官方文档回答 Kimi Code 产品问题并附来源链接。
+- 新增内置 `/check-kimi-code-docs` Skill，自动基于官方文档回答 Lacrous Kimi Code 产品问题并附来源链接。
 
 ### 优化
 
@@ -1048,7 +1048,7 @@ outline: 2
 
 ### 新功能
 
-- Kimi Code 现支持 Anthropic 兼容协议，并支持视频输入。
+- Lacrous Kimi Code 现支持 Anthropic 兼容协议，并支持视频输入。
 - web UI 新增完成提示音与问题通知，并在设置中分别提供完成通知、问题通知和提示音的开关。问题通知默认关闭，仅在用户主动开启后才会将问题文本发送到桌面。
 - 新增 `KIMI_CODE_CUSTOM_HEADERS` 环境变量，用于自定义出站 LLM 请求头，并向非 Kimi 供应商发送 `User-Agent` 请求头。将 `KIMI_CODE_CUSTOM_HEADERS` 设为由换行分隔的 `Name: Value` 行。
 - 会话列表 API 新增可选的 `exclude_empty` 参数，用于省略没有任何消息的会话。
@@ -1079,7 +1079,7 @@ outline: 2
 
 ### 重构
 
-- 将 Anthropic 兼容协议上的 Kimi Code 模型改走 beta Messages API。
+- 将 Anthropic 兼容协议上的 Lacrous Kimi Code 模型改走 beta Messages API。
 - 升级 web Markdown 渲染器依赖（katex、markstream-vue、shiki），以修复问题并改进性能。
 - 在轮次和 API 错误遥测中新增供应商类型与协议属性。
 
@@ -1269,7 +1269,7 @@ outline: 2
 
 ### 新功能
 
-- 新增 Kimi Code Web 模式，可通过 `kimi web` 或 CLI 内的 `/web` 启动，在浏览器中的聊天界面继续会话。
+- 新增 Lacrous Kimi Code Web 模式，可通过 `kimi web` 或 CLI 内的 `/web` 启动，在浏览器中的聊天界面继续会话。
 
 ### 修复
 
@@ -1396,7 +1396,7 @@ outline: 2
 ### 修复
 
 - 阻止在活跃 turn 期间 fork 会话，并将 wire protocol 定义整合到共享的内部包中。
-- 修复 Kimi Datasource，使其在当前 Kimi Code 环境中使用匹配的 OAuth 凭证和服务端点。
+- 修复 Kimi Datasource，使其在当前 Lacrous Kimi Code 环境中使用匹配的 OAuth 凭证和服务端点。
 - 修复 goal 标记文本超出终端宽度的问题。
 
 ### 优化
@@ -1507,7 +1507,7 @@ outline: 2
 - 新增内置的 `update-config` Skill —— 你现在可以让 Kimi 编辑它自己的配置文件。
 - 新增持久化的实验性功能开关，以及一个 TUI 面板，确认后会通过重载当前会话来应用变更。
 - 新增 `/reload` 以重载当前会话并应用更新后的配置文件，以及 `/reload-tui` 以仅重载 TUI 偏好设置。
-- 新增 doctor 命令，用于校验 Kimi Code 的配置文件。
+- 新增 doctor 命令，用于校验 Lacrous Kimi Code 的配置文件。
 
 ### 修复
 
@@ -1571,7 +1571,7 @@ outline: 2
 - 新增后台结构化提问，让 Agent 在等待用户回答时也能继续工作。
 - 新增后台自动更新，可在 tui.toml 中关闭。
 - 新增 `/undo` 斜杠命令，用于从对话历史中撤回上一条提示词，并在撤回时保持回放记录同步。
-- 新增 `kimi upgrade` 命令，用于手动检查并升级 Kimi Code CLI。
+- 新增 `kimi upgrade` 命令，用于手动检查并升级 Lacrous Kimi Code CLI。
 - 新增审批生命周期 hook 事件，用于观察待处理和已完成的权限提示。
 - 允许子 Agent 使用在其父 Agent 上注册的自定义工具。
 - 支持用 glob 搜索显式的绝对路径（工作空间之外）。
@@ -1622,7 +1622,7 @@ outline: 2
 
 ### 新功能
 
-- 新增 `KIMI_MODEL_*` 环境变量通道，让你无需编辑 `config.toml` 即可让 Kimi Code 使用指定模型（供应商类型、base URL、API 密钥、上下文大小、能力以及 thinking 设置）。
+- 新增 `KIMI_MODEL_*` 环境变量通道，让你无需编辑 `config.toml` 即可让 Lacrous Kimi Code 使用指定模型（供应商类型、base URL、API 密钥、上下文大小、能力以及 thinking 设置）。
 - 支持直接从 GitHub 仓库 URL 安装 plugin，并在 plugin 管理器中展示每次安装的来源和信任级别（kimi-official、curated、third-party）。
 
 ### 修复

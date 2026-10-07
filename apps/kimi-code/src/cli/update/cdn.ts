@@ -50,7 +50,7 @@ async function fetchWithTimeout(
 }
 
 /**
- * Fetch the latest published Kimi Code version from the CDN.
+ * Fetch the latest published Lacrous Kimi Code version from the CDN.
  *
  * **Throws** on any failure (network error, non-2xx, empty body, non-semver
  * text). Callers must catch — `refreshUpdateCache` deliberately lets the

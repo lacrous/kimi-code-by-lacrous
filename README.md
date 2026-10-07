@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="assets/logo-256.png" alt="Kimi Code by lacrous" width="128" />
+<img src="assets/logo-256.png" alt="Lacrous Kimi Code by lacrous" width="128" />
 
-# Kimi Code CLI — lacrous fork
+# Lacrous Kimi Code CLI — lacrous fork
 
-**Bring-your-own-provider builds for Kimi Code CLI.**
+**Bring-your-own-provider builds for Lacrous Kimi Code CLI.**
 
 [![Upstream](https://img.shields.io/badge/upstream-MoonshotAI%2Fkimi--code-8A8A8A?style=flat-square)](https://github.com/MoonshotAI/kimi-code)
 [![License](https://img.shields.io/badge/license-MIT-C06014?style=flat-square)](LICENSE)
@@ -468,7 +468,7 @@ an AI coding agent that runs in your terminal.
   `kimi provider add-builtin`, the `/provider` built-in flow, model-id search in the picker,
   `pnpm run kimi`, and removal of upstream's release/publish workflows. See
   [CREDITS.md](CREDITS.md) for the per-file breakdown.
-- **This fork is not affiliated with or endorsed by Moonshot AI.** Kimi, Kimi Code, and
+- **This fork is not affiliated with or endorsed by Moonshot AI.** Kimi, Lacrous Kimi Code, and
   related names and marks are the property of their respective owner.
 
 All upstream code remains under the MIT License; see [LICENSE](LICENSE). Upstream
@@ -484,7 +484,7 @@ git fetch upstream && git merge upstream/main
 
 ## Acknowledgements
 
-- **Moonshot AI** for Kimi Code CLI, the foundation of this fork.
+- **Moonshot AI** for Lacrous Kimi Code CLI, the foundation of this fork.
 - [`pi-tui`](https://github.com/earendil-works/pi-mono/tree/main/packages/tui) — upstream's
   TUI layer, used under its original license.
 

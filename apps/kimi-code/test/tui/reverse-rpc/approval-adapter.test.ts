@@ -240,21 +240,21 @@ describe('approval adapter', () => {
         response: 'approved',
         selected_label: 'auto',
         description:
-          'Best if you want Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
+          'Best if you want Lacrous Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
       },
       {
         label: 'Switch to Ask When Needed and start',
         response: 'approved',
         selected_label: 'yolo',
         description:
-          'Tools and plan changes are approved automatically. Kimi Code may still ask you questions.',
+          'Tools and plan changes are approved automatically. Lacrous Kimi Code may still ask you questions.',
       },
       {
         label: 'Start in Always Ask',
         response: 'approved',
         selected_label: 'manual',
         description:
-          'Keep approvals on. Kimi Code will ask before risky actions, so the goal may stop and wait for you.',
+          'Keep approvals on. Lacrous Kimi Code will ask before risky actions, so the goal may stop and wait for you.',
       },
       {
         label: 'Do not start',
@@ -284,14 +284,14 @@ describe('approval adapter', () => {
         response: 'approved',
         selected_label: 'auto',
         description:
-          'Best if you want Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
+          'Best if you want Lacrous Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
       },
       {
         label: 'Keep Ask When Needed and start',
         response: 'approved',
         selected_label: 'yolo',
         description:
-          'Tools and plan changes stay approved automatically. Kimi Code may still ask you questions.',
+          'Tools and plan changes stay approved automatically. Lacrous Kimi Code may still ask you questions.',
       },
       {
         label: 'Do not start',

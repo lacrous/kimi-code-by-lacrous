@@ -2129,7 +2129,7 @@ describe('KimiTUI startup', () => {
   it('logs login failures with session context', async () => {
     const warn = vi.spyOn(log, 'warn').mockImplementation(() => {});
     const session = makeSession();
-    const loginError = new Error('Failed to list Kimi Code models (HTTP 402).');
+    const loginError = new Error('Failed to list Lacrous Kimi Code models (HTTP 402).');
     const harness = makeHarness(session, {
       auth: {
         status: vi.fn(async () => ({ providers: [] })),
@@ -2164,7 +2164,7 @@ describe('KimiTUI startup', () => {
           alreadyLoggedIn: false,
           sessionId: 'ses-1',
           error: expect.objectContaining({
-            message: 'Failed to list Kimi Code models (HTTP 402).',
+            message: 'Failed to list Lacrous Kimi Code models (HTTP 402).',
           }),
         }),
       );

@@ -1,6 +1,6 @@
 /**
  * Region profiles for the mainland-China (.com) and global (.ai)
- * Kimi Code deployments, plus the resolver that decides which region a
+ * Lacrous Kimi Code deployments, plus the resolver that decides which region a
  * client belongs to.
  *
  * A region is a bundle of endpoints (OAuth host, managed API base URL, CDN,

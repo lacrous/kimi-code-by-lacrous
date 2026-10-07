@@ -492,7 +492,7 @@ export class ReadTool implements IReadTool {
         parts.push(`Next Read: ${JSON.stringify(next)}`);
       }
       if (eventLog) {
-        parts.push('Kimi Code agent event log: read one record at a time (n_lines=1); increase max_chars for a longer record or extract fields with Bash.');
+        parts.push('Lacrous Kimi Code agent event log: read one record at a time (n_lines=1); increase max_chars for a longer record or extract fields with Bash.');
       }
       if (page.lineEndingStyle === 'mixed') {
         parts.push('Mixed or lone carriage-return line endings are shown as \\r. Use exact \\r\\n or \\r escapes in Edit.old_string for those lines.');

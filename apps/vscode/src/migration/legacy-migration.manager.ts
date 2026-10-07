@@ -189,7 +189,7 @@ export class LegacyMigrationManager {
           : {
               kind: "legacy-migration",
               message:
-                "Legacy Kimi data was found. Migrate config, MCP servers, history, skills, and sessions into Kimi Code? Your old data will be kept.",
+                "Legacy Kimi data was found. Migrate config, MCP servers, history, skills, and sessions into Lacrous Kimi Code? Your old data will be kept.",
               actions: [
                 { id: "now", label: "Migrate Now" },
                 { id: "later", label: "Later" },
@@ -412,7 +412,7 @@ export class LegacyMigrationManager {
         warnings.push({
           code: "source-equals-target",
           sourceHome,
-          message: "The legacy KIMI_SHARE_DIR resolves to the Kimi Code home and was ignored.",
+          message: "The legacy KIMI_SHARE_DIR resolves to the Lacrous Kimi Code home and was ignored.",
         });
       } else if (
         sourceHome !== undefined &&
@@ -592,7 +592,7 @@ function aggregateManualActions(
     for (const failure of source.failures) {
       if (failure.code === "run-failed") {
         actions.push(
-          `Fix access to ${source.source.sourceHome} or the Kimi Code home, then run “Kimi Code: Migrate Legacy Data” again.`,
+          `Fix access to ${source.source.sourceHome} or the Lacrous Kimi Code home, then run “Lacrous Kimi Code: Migrate Legacy Data” again.`,
         );
       } else {
         actions.push(

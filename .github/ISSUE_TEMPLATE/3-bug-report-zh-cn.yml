@@ -7,9 +7,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        感谢你提交 bug 报告！这能帮助 Kimi Code 变得更好。
+        感谢你提交 bug 报告！这能帮助 Lacrous Kimi Code 变得更好。
 
-        请确认你正在运行最新版本的 Kimi Code CLI——你遇到的问题可能已经被修复。
+        请确认你正在运行最新版本的 Lacrous Kimi Code CLI——你遇到的问题可能已经被修复。
 
         请尽量提供完整的信息。
 
@@ -18,7 +18,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: 你运行的 Kimi Code 版本是？
+      label: 你运行的 Lacrous Kimi Code 版本是？
       description: 复制 `kimi --version` 或 `/version` 的输出
     validations:
       required: true

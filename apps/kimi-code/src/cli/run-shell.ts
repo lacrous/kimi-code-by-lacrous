@@ -97,7 +97,7 @@ export async function runShell(
   const sourceIsTarget = sameLegacyPath(legacySource.sourceHome, harness.homeDir);
   if (sourceIsTarget) {
     process.stderr.write(
-      `  KIMI_SHARE_DIR (${legacySource.sourceHome}) points at the Kimi Code home; legacy migration is disabled. Unset it or point it at the kimi-cli data directory to migrate.\n`,
+      `  KIMI_SHARE_DIR (${legacySource.sourceHome}) points at the Lacrous Kimi Code home; legacy migration is disabled. Unset it or point it at the kimi-cli data directory to migrate.\n`,
     );
   }
   const migrationPlan = sourceIsTarget

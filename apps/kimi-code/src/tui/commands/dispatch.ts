@@ -461,7 +461,7 @@ async function handleBuiltInSlashCommand(
       host.showHelpPanel();
       return;
     case 'version':
-      host.showStatus(`Kimi Code v${host.state.appState.version}`);
+      host.showStatus(`Lacrous Kimi Code v${host.state.appState.version}`);
       return;
     case 'new': {
       // A first-use lazy creation may still be in flight: wait it out so /new

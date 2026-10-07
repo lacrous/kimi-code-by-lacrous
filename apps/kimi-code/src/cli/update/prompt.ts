@@ -70,7 +70,7 @@ function renderInstallPrompt(
   const command = chalk.hex(UPDATE_PROMPT_PRIMARY)(options.installCommand);
   const changelogText = chalk.hex(UPDATE_PROMPT_PRIMARY).underline(`View changelog: ${CHANGELOG_URL}`);
   const lines = [
-    chalk.hex(UPDATE_PROMPT_PRIMARY).bold('Kimi Code Update Available'),
+    chalk.hex(UPDATE_PROMPT_PRIMARY).bold('Lacrous Kimi Code Update Available'),
     chalk.hex(UPDATE_PROMPT_MUTED)(`${PRODUCT_NAME} has a newer release ready.`),
     `]8;;${CHANGELOG_URL}\\${changelogText}]8;;\\`,
     '',

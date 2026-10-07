@@ -1,5 +1,5 @@
 /**
- * Kimi Code entry point.
+ * Lacrous Kimi Code entry point.
  *
  * Parses CLI arguments via Commander.js, validates options, runs the
  * outer update preflight, then delegates to the requested UI runner.
@@ -167,7 +167,7 @@ export function main(): void {
   if (forkHome.migrated) {
     process.stderr.write(
       `[lacrous-kimi] Migrated your data from ${forkHome.legacyHome} to ${forkHome.home}. ` +
-        'The original Kimi Code home was left untouched.\n',
+        'The original Lacrous Kimi Code home was left untouched.\n',
     );
   } else if (forkHome.migrationError !== undefined) {
     process.stderr.write(

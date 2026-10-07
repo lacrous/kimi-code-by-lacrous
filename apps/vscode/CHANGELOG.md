@@ -169,8 +169,8 @@
 ### Breaking
 
 - Raised the minimum supported editor version to VS Code 1.100.0.
-- Legacy Kimi Code OAuth credentials and MCP OAuth credentials are deliberately
-  not migrated. Sign in to Kimi Code again and re-authorize affected MCP
+- Legacy Lacrous Kimi Code OAuth credentials and MCP OAuth credentials are deliberately
+  not migrated. Sign in to Lacrous Kimi Code again and re-authorize affected MCP
   servers after upgrading.
 - Removed the `kimi.executablePath` and `kimi.environmentVariables` settings.
   The old `kimi.environmentVariables.KIMI_SHARE_DIR` value is consulted only to
@@ -179,17 +179,17 @@
 
 ### Changed
 
-- Replaced the legacy Python/stdio runtime with the in-process Kimi Code Node
+- Replaced the legacy Python/stdio runtime with the in-process Lacrous Kimi Code Node
   SDK. The extension no longer downloads or starts a separate Kimi executable.
-- The in-process engine is the same one that powers the Kimi Code CLI, so the
+- The in-process engine is the same one that powers the Lacrous Kimi Code CLI, so the
   agent gains CLI-parity capabilities beyond the legacy runtime, including
   parallel subagent swarms, background tasks, and long-running goal runs.
 - Added an opt-in legacy migration prompt on the first launch that detects data
   from version 0.5.x. The migration copies or merges supported data into the
-  current Kimi Code home and does not delete the legacy source. If migration is
-  skipped or needs to be retried, run **Kimi Code: Migrate Legacy Data** from the
+  current Lacrous Kimi Code home and does not delete the legacy source. If migration is
+  skipped or needs to be retried, run **Lacrous Kimi Code: Migrate Legacy Data** from the
   Command Palette.
-- When VS Code and the Kimi Code terminal app resolve to the same
+- When VS Code and the Lacrous Kimi Code terminal app resolve to the same
   `KIMI_CODE_HOME`, they use the same configuration and session storage. Running
   the same session concurrently from multiple processes is not supported or
   protected by cross-process locking.

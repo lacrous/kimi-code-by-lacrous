@@ -1,16 +1,16 @@
-# Kimi Code CLI
+# Lacrous Kimi Code CLI
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Docs](https://img.shields.io/badge/docs-online-blue)](https://moonshotai.github.io/kimi-code/zh/)
 
 [Documentation](https://moonshotai.github.io/kimi-code/zh/) · [Issues](https://github.com/MoonshotAI/kimi-code/issues) · [English](README.md)
 
 
-![Kimi Code 的使用演示](./docs/media/intro.gif)
+![Lacrous Kimi Code 的使用演示](./docs/media/intro.gif)
 
 
-## 什么是 Kimi Code CLI
+## 什么是 Lacrous Kimi Code CLI
 
-Kimi Code CLI 是一个运行在终端里的 AI 编程 agent，可以帮你读写代码、执行 shell 命令、检索文件、抓取网页，并根据反馈自主决定下一步动作。开箱即用对接 Moonshot AI 的 Kimi 模型，也可指向其他兼容厂商。
+Lacrous Kimi Code CLI 是一个运行在终端里的 AI 编程 agent，可以帮你读写代码、执行 shell 命令、检索文件、抓取网页，并根据反馈自主决定下一步动作。开箱即用对接 Moonshot AI 的 Kimi 模型，也可指向其他兼容厂商。
 
 ## 安装
 
@@ -28,7 +28,7 @@ curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
 irm https://code.kimi.com/kimi-code/install.ps1 | iex
 ```
 
-> Windows 用户首次启动前还需要安装 [Git for Windows](https://gitforwindows.org/)，Kimi Code CLI 会使用其中的 Git Bash 作为 Shell 环境。如果 Git Bash 安装在非标准路径，请把 `KIMI_SHELL_PATH` 设为 `bash.exe` 的绝对路径。
+> Windows 用户首次启动前还需要安装 [Git for Windows](https://gitforwindows.org/)，Lacrous Kimi Code CLI 会使用其中的 Git Bash 作为 Shell 环境。如果 Git Bash 安装在非标准路径，请把 `KIMI_SHELL_PATH` 设为 `bash.exe` 的绝对路径。
 
 随后在新的终端会话中运行：
 
@@ -47,7 +47,7 @@ cd your-project
 kimi
 ```
 
-首次启动时，在 Kimi Code CLI 里输入 `/login`，选择 Kimi Code OAuth 或 Moonshot AI Open Platform API 密钥登录。登录完成后，可以先让它熟悉项目：
+首次启动时，在 Lacrous Kimi Code CLI 里输入 `/login`，选择 Lacrous Kimi Code OAuth 或 Moonshot AI Open Platform API 密钥登录。登录完成后，可以先让它熟悉项目：
 
 ```
 帮我看一下这个项目的目录结构，简单介绍一下每个目录是做什么的
@@ -68,14 +68,14 @@ kimi
 
 ## 在编辑器里使用（ACP）
 
-Kimi Code CLI 支持 [Agent Client Protocol](https://agentclientprotocol.com/)，ACP 兼容的编辑器 / IDE（Zed、JetBrains……）可以通过 stdio 直接驱动会话。登录一次后，把编辑器指向 `kimi acp` 子命令即可，无需重复登录。
+Lacrous Kimi Code CLI 支持 [Agent Client Protocol](https://agentclientprotocol.com/)，ACP 兼容的编辑器 / IDE（Zed、JetBrains……）可以通过 stdio 直接驱动会话。登录一次后，把编辑器指向 `kimi acp` 子命令即可，无需重复登录。
 
 以 Zed 为例，在 `~/.config/zed/settings.json` 中加入：
 
 ```json
 {
   "agent_servers": {
-    "Kimi Code CLI": {
+    "Lacrous Kimi Code CLI": {
       "type": "custom",
       "command": "kimi",
       "args": ["acp"],

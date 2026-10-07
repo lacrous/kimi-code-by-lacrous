@@ -1,6 +1,6 @@
 # Remote Control
 
-Start Kimi Code CLI with remote control enabled by running `kimi rc` in a terminal — it generates a link that can remotely control this machine. Scan the QR code with your phone to open the link, or visit it directly on another device. After opening the link, log in with the same Kimi account as in your local Kimi Code CLI to check on task progress, handle approvals, continue conversations, or start new sessions. Tasks always run on your machine — the web page is just a remote window.
+Start Lacrous Kimi Code CLI with remote control enabled by running `kimi rc` in a terminal — it generates a link that can remotely control this machine. Scan the QR code with your phone to open the link, or visit it directly on another device. After opening the link, log in with the same Kimi account as in your local Lacrous Kimi Code CLI to check on task progress, handle approvals, continue conversations, or start new sessions. Tasks always run on your machine — the web page is just a remote window.
 
 ## Getting started
 
@@ -8,7 +8,7 @@ Start Kimi Code CLI with remote control enabled by running `kimi rc` in a termin
 
 Before turning on Remote Control, make sure your machine meets the following conditions:
 
-- **Kimi Code CLI installed**: see [Getting started](../guides/getting-started.md)
+- **Lacrous Kimi Code CLI installed**: see [Getting started](../guides/getting-started.md)
 - **Logged in to your Kimi account with a paid membership**: Remote Control requires a paid membership and is not available to free users
 - **Machine stays awake and online**: Remote Control depends on a persistent connection between your machine and the Kimi service; remote sessions are unavailable after shutdown, sleep, or network loss
 
@@ -88,11 +88,11 @@ Remote Control is only a remote window — all computation and file operations s
 - **Local process exits**: pressing `Ctrl+C` or closing the terminal stops Remote Control and takes the device off the remote list. Restart it to recover
 - **End the remote connection but keep the local task**: just close the web page — the local task is unaffected
 
-## What's the difference between Remote Control and Kimi Code Web?
+## What's the difference between Remote Control and Lacrous Kimi Code Web?
 
-[Kimi Code Web](../guides/web.md) is the graphical interface on your machine or LAN; Remote Control extends it to any device on the public internet:
+[Lacrous Kimi Code Web](../guides/web.md) is the graphical interface on your machine or LAN; Remote Control extends it to any device on the public internet:
 
-| | Kimi Code Web | Remote Control |
+| | Lacrous Kimi Code Web | Remote Control |
 | --- | --- | --- |
 | Access scope | `localhost`, or the LAN with `--host` | Any device on the public internet (via the Kimi relay) |
 | How to start | Run `kimi web` in a terminal | `kimi rc`, `kimi web --remote-control`, or `/remote-control` in the CLI |
@@ -100,7 +100,7 @@ Remote Control is only a remote window — all computation and file operations s
 | Where data and execution live | Your machine | Your machine (the web page is just a remote window) |
 | Typical scenario | GUI in a local browser | Following up remotely from a phone, tablet, or another computer |
 
-For the web interface's features, see [Using Kimi Code in the browser](../guides/web.md).
+For the web interface's features, see [Using Lacrous Kimi Code in the browser](../guides/web.md).
 
 ## Security and permissions
 
@@ -144,4 +144,4 @@ Check in this order:
 
 ## Next steps
 
-- [Using Kimi Code in the browser](../guides/web.md) — Remote Control opens the same web interface; learn what the interface itself can do
+- [Using Lacrous Kimi Code in the browser](../guides/web.md) — Remote Control opens the same web interface; learn what the interface itself can do

@@ -62,7 +62,7 @@ describe('parseWindows', () => {
   const WMCTRL_OUTPUT = [
     'Window id: 0x3200007:',
     '  Client Name: chromium',
-    '  Window Name: Kimi Code - Chromium',
+    '  Window Name: Lacrous Kimi Code - Chromium',
     '  Absolute upper-left X: 10',
     '  Absolute upper-left Y: 20',
     '  Width: 800',
@@ -86,7 +86,7 @@ describe('parseWindows', () => {
     const [first] = parseWindows(WMCTRL_OUTPUT.split('\n'));
 
     expect(first?.id).toBe('0x3200007');
-    expect(first?.title).toBe('Kimi Code - Chromium');
+    expect(first?.title).toBe('Lacrous Kimi Code - Chromium');
     expect(first?.application).toBe('chromium');
     expect(first?.geometry).toEqual({ width: 800, height: 600 });
     expect(first?.x).toBe(10);

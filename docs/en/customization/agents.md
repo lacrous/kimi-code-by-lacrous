@@ -1,12 +1,12 @@
 # Agents and Sub-Agents
 
-Every session in Kimi Code CLI is driven by a **main Agent**. The main Agent understands the user's intent, plans steps, calls tools, and when needed dispatches **sub-agents** to handle more focused sub-tasks, such as exploring an unfamiliar codebase, reviewing multiple implementations in parallel, or planning a large refactor without touching the main context.
+Every session in Lacrous Kimi Code CLI is driven by a **main Agent**. The main Agent understands the user's intent, plans steps, calls tools, and when needed dispatches **sub-agents** to handle more focused sub-tasks, such as exploring an unfamiliar codebase, reviewing multiple implementations in parallel, or planning a large refactor without touching the main context.
 
 A sub-agent receives a task description from the main Agent, works in its own isolated context, and then returns its conclusions. It does not communicate with the user directly, and its intermediate reasoning and tool call records do not mix into the main Agent's history.
 
 ## Built-in Sub-Agents
 
-Kimi Code CLI includes three built-in sub-agents, ready to use out of the box, each aimed at a different task shape:
+Lacrous Kimi Code CLI includes three built-in sub-agents, ready to use out of the box, each aimed at a different task shape:
 
 - **`coder`**: The default sub-agent, a general-purpose software engineering assistant that can read and write files, execute commands, search code, and land concrete changes.
 - **`explore`**: Dedicated to codebase exploration; performs read-only operations only and does not modify any files. Ideal for quickly searching, reading, and summarizing a repository without touching files.
@@ -53,7 +53,7 @@ Beyond the three built-in sub-agents, you can define your own agents as Markdown
 
 ### Agent Locations
 
-Kimi Code CLI discovers agent files by scope; more specific scopes take higher priority: **Explicit (`--agent-file`) > Project > Extra > User > Plugin > Built-in**. When two files define the same `name`, the higher-priority scope wins. Each directory is scanned recursively for `.md` files.
+Lacrous Kimi Code CLI discovers agent files by scope; more specific scopes take higher priority: **Explicit (`--agent-file`) > Project > Extra > User > Plugin > Built-in**. When two files define the same `name`, the higher-priority scope wins. Each directory is scanned recursively for `.md` files.
 
 **User level** (applies to all projects):
 - `$KIMI_CODE_HOME/agents/` (default: `~/.kimi-code/agents/`)
@@ -78,7 +78,7 @@ extra_agent_dirs = ["~/team-agents", ".agents/team-agents"]
 Separately, `$KIMI_CODE_HOME/SYSTEM.md` permanently overrides the default main agent's system prompt; it is not part of agent-file discovery. Its precedence interactions are covered in the [SYSTEM.md section](#overriding-the-main-agents-system-prompt-with-systemmd).
 
 ::: warning Trust model
-Agent files are prompt configuration, and project-level files come from the repository itself, including repositories you have just cloned and do not trust yet. A project-scoped file can take over a built-in agent entirely: naming it `agent.md` with `override: true` replaces the **default main agent's whole system prompt**, and `coder.md` with `override: true` replaces the default sub-agent type. Unlike `AGENTS.md` content, which is injected into the prompt as reference data, an override file *is* the system prompt, and a file without a `tools` list keeps every tool. Review `.kimi-code/agents/` and `.agents/agents/` in unfamiliar repositories with the same caution you would apply to scripts, before running Kimi Code inside them.
+Agent files are prompt configuration, and project-level files come from the repository itself, including repositories you have just cloned and do not trust yet. A project-scoped file can take over a built-in agent entirely: naming it `agent.md` with `override: true` replaces the **default main agent's whole system prompt**, and `coder.md` with `override: true` replaces the default sub-agent type. Unlike `AGENTS.md` content, which is injected into the prompt as reference data, an override file *is* the system prompt, and a file without a `tools` list keeps every tool. Review `.kimi-code/agents/` and `.agents/agents/` in unfamiliar repositories with the same caution you would apply to scripts, before running Lacrous Kimi Code inside them.
 :::
 
 ### Agent File Format

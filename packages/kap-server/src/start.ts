@@ -404,9 +404,9 @@ export async function startServer(opts: ServerStartOptions): Promise<RunningServ
     await app.register(swagger, {
       openapi: {
         info: {
-          title: 'Kimi Code Server API',
+          title: 'Lacrous Kimi Code Server API',
           description:
-            'REST API for the Kimi Code local server. All JSON responses are wrapped in a uniform envelope `{ code, msg, data, request_id }`.',
+            'REST API for the Lacrous Kimi Code local server. All JSON responses are wrapped in a uniform envelope `{ code, msg, data, request_id }`.',
           version: serverVersion,
         },
         tags: [

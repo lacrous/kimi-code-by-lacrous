@@ -31,7 +31,7 @@ import {
 } from '#/constant/app';
 
 /**
- * Return the root data directory for Kimi Code.
+ * Return the root data directory for Lacrous Kimi Code.
  *
  * Priority: `KIMI_CODE_HOME` env var > `~/.kimi-code`.
  */

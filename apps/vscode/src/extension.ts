@@ -18,10 +18,10 @@ const LEGACY_REAUTH_NOTICE_KEY = "kimi.legacyMigration.reauthNotice.v1";
 const LEGACY_WARNING_NOTICE_KEY = "kimi.legacyMigration.warningNotice.v1";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  outputChannel = vscode.window.createOutputChannel("Kimi Code");
+  outputChannel = vscode.window.createOutputChannel("Lacrous Kimi Code");
   const remoteInfo = vscode.env.remoteName ? ` (remote: ${vscode.env.remoteName})` : "";
   const version = VSCodeSettings.getExtensionConfig().version;
-  log(`Kimi Code ${version} activating${remoteInfo}`);
+  log(`Lacrous Kimi Code ${version} activating${remoteInfo}`);
   context.subscriptions.push(activateExtensionTelemetry({ version, log }));
 
   provider = new KimiWebviewProvider(
@@ -141,11 +141,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ).catch((error) => {
     logError("Unable to check for legacy Kimi data", error);
   });
-  log("Kimi Code activated");
+  log("Lacrous Kimi Code activated");
 }
 
 export async function deactivate(): Promise<void> {
-  log("Kimi Code deactivating");
+  log("Lacrous Kimi Code deactivating");
   try {
     await provider?.shutdown();
   } finally {
@@ -175,7 +175,7 @@ async function offerLegacyMigration(
   const warningNotice =
     discovery.warnings.length === 0
       ? null
-      : "Some legacy Kimi data could not be inspected. Use “Kimi Code: Migrate Legacy Data” to retry.";
+      : "Some legacy Kimi data could not be inspected. Use “Lacrous Kimi Code: Migrate Legacy Data” to retry.";
   if (discovery.prompt === null) {
     if (reauthNotice !== null && !globalState.get<boolean>(LEGACY_REAUTH_NOTICE_KEY, false)) {
       await vscode.window.showWarningMessage(reauthNotice);
@@ -214,10 +214,10 @@ function legacyReauthNotice(
   const mcpLogins = discovery.notices.mcpOauthServersRequiringReauth.length;
   if (kimiLogins === 0 && mcpLogins === 0) return null;
   if (kimiLogins > 0 && mcpLogins > 0) {
-    return "Legacy OAuth credentials are not copied. Sign in to Kimi Code and authorize your MCP servers again.";
+    return "Legacy OAuth credentials are not copied. Sign in to Lacrous Kimi Code and authorize your MCP servers again.";
   }
   return kimiLogins > 0
-    ? "Legacy OAuth credentials are not copied. Sign in to Kimi Code again."
+    ? "Legacy OAuth credentials are not copied. Sign in to Lacrous Kimi Code again."
     : "Legacy MCP OAuth credentials are not copied. Authorize those MCP servers again.";
 }
 

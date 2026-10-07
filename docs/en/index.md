@@ -1,7 +1,7 @@
 ---
 layout: home
 hero:
-  name: Kimi Code CLI
+  name: Lacrous Kimi Code CLI
   text: The Starting Point for Next-Gen Agents
   actions:
     - theme: brand

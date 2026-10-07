@@ -208,7 +208,7 @@ auto_install = false
       expect.objectContaining({ tuiMode: 'fullscreen' }),
     );
     expect(host.showNotice).toHaveBeenCalledWith(
-      'TUI mode takes effect after restarting Kimi Code.',
+      'TUI mode takes effect after restarting Lacrous Kimi Code.',
     );
   });
 

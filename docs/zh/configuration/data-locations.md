@@ -1,6 +1,6 @@
 # 数据路径
 
-Kimi Code CLI 把配置文件、会话历史、登录凭据、诊断日志等运行时数据集中存放在 `~/.kimi-code/` 下。本页帮你搞清楚每类数据在哪里、用来做什么，以及需要时怎么清理或搬迁。
+Lacrous Kimi Code CLI 把配置文件、会话历史、登录凭据、诊断日志等运行时数据集中存放在 `~/.kimi-code/` 下。本页帮你搞清楚每类数据在哪里、用来做什么，以及需要时怎么清理或搬迁。
 
 ## 数据根目录
 
@@ -16,7 +16,7 @@ Kimi Code CLI 把配置文件、会话历史、登录凭据、诊断日志等运
 export KIMI_CODE_HOME="$HOME/.config/kimi-code"
 ```
 
-设置后，配置、会话、日志、OAuth 凭据、Kimi 专属用户级 Skills、全局 `AGENTS.md` 等 **Kimi Code 数据**都会落到新路径下。`KIMI_CODE_HOME` 的完整说明见[环境变量](./env-vars.md)。
+设置后，配置、会话、日志、OAuth 凭据、Kimi 专属用户级 Skills、全局 `AGENTS.md` 等 **Lacrous Kimi Code 数据**都会落到新路径下。`KIMI_CODE_HOME` 的完整说明见[环境变量](./env-vars.md)。
 
 ::: tip 提示
 

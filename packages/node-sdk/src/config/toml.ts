@@ -41,7 +41,7 @@ function camelToSnake(str: string): string {
 }
 
 const DEFAULT_CONFIG_FILE_TEXT = `# ~/.kimi-code/config.toml
-# Runtime settings for Kimi Code.
+# Runtime settings for Lacrous Kimi Code.
 # This file starts empty so built-in defaults can apply.
 # Login will populate managed Kimi provider and model entries.
 `;

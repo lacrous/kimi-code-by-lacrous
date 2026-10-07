@@ -713,7 +713,7 @@ describe('refreshProviderModels defaultModel self-heal', () => {
       expect(result.failed).toEqual([]);
       expect(result.unchanged).toEqual([]);
       expect(result.changed).toEqual([
-        { provider_id: KIMI_CODE_PROVIDER_NAME, provider_name: 'Kimi Code', added: 0, removed: 0 },
+        { provider_id: KIMI_CODE_PROVIDER_NAME, provider_name: 'Lacrous Kimi Code', added: 0, removed: 0 },
       ]);
       expect(replaceSections).toHaveBeenCalledTimes(1);
       expect(config.get<string>('defaultModel')).toBe('kimi-code/kimi-k2');

@@ -47,7 +47,7 @@ export function getModelThinkingMode(model: ModelConfig): ThinkingMode {
 }
 
 export function providerDisplayName(provider: string): string {
-  if (provider === MANAGED_KIMI_CODE_PROVIDER) return "Kimi Code";
+  if (provider === MANAGED_KIMI_CODE_PROVIDER) return "Lacrous Kimi Code";
   if (provider.startsWith("managed:")) return provider.slice("managed:".length);
   return provider;
 }

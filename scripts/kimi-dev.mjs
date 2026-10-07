@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Runs the Kimi Code CLI from this checkout instead of an installed binary.
+ * Runs the Lacrous Kimi Code CLI from this checkout instead of an installed binary.
  *
  * Author: lacrous (fork of MoonshotAI/kimi-code).
  *

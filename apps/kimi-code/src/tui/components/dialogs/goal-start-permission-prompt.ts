@@ -16,19 +16,19 @@ export const GOAL_START_MANUAL_OPTIONS: readonly StartPermissionOption[] = [
     value: 'auto',
     label: 'Switch to Never Ask and start',
     description:
-      'Best if you want Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
+      'Best if you want Lacrous Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
   },
   {
     value: 'yolo',
     label: 'Switch to Ask When Needed and start',
     description:
-      'Tools and plan changes are approved automatically. Kimi Code may still ask you questions.',
+      'Tools and plan changes are approved automatically. Lacrous Kimi Code may still ask you questions.',
   },
   {
     value: 'manual',
     label: 'Start in Always Ask',
     description:
-      'Keep approvals on. Kimi Code will ask before risky actions, so the goal may stop and wait for you.',
+      'Keep approvals on. Lacrous Kimi Code will ask before risky actions, so the goal may stop and wait for you.',
   },
   {
     value: 'cancel',
@@ -42,13 +42,13 @@ export const GOAL_START_YOLO_OPTIONS: readonly StartPermissionOption[] = [
     value: 'auto',
     label: 'Switch to Never Ask and start',
     description:
-      'Best if you want Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
+      'Best if you want Lacrous Kimi Code to keep working while you are away. Tools are approved automatically, and questions are skipped.',
   },
   {
     value: 'yolo',
     label: 'Keep Ask When Needed and start',
     description:
-      'Tools and plan changes stay approved automatically. Kimi Code may still ask you questions.',
+      'Tools and plan changes stay approved automatically. Lacrous Kimi Code may still ask you questions.',
   },
   {
     value: 'cancel',
@@ -66,7 +66,7 @@ const MANUAL_OPTIONS = GOAL_START_MANUAL_OPTIONS;
 const YOLO_OPTIONS = GOAL_START_YOLO_OPTIONS;
 
 const MANUAL_NOTICE_LINES = [
-  'Always Ask mode asks you before Kimi Code runs commands, edits files, or takes other risky actions.',
+  'Always Ask mode asks you before Lacrous Kimi Code runs commands, edits files, or takes other risky actions.',
   'Always Ask mode is not suitable for unattended goal work.',
   'You can go back without losing your command.',
 ] as const;

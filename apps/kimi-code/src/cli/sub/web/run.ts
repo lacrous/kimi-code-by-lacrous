@@ -164,7 +164,7 @@ export function buildWebCommand(
     )
     .option(
       '--web-title <title>',
-      'Set a custom browser tab title for this web UI instance (default: "<workspace dir> | Kimi Code").',
+      'Set a custom browser tab title for this web UI instance (default: "<workspace dir> | Lacrous Kimi Code").',
     );
   if (!forceRemoteControl) {
     withServerOptions.addOption(

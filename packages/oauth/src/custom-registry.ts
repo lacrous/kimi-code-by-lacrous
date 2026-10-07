@@ -111,7 +111,7 @@ const RESERVED_PROVIDER_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Provider ids a custom registry may never claim: the managed Kimi Code slots
+ * Provider ids a custom registry may never claim: the managed Lacrous Kimi Code slots
  * and the first-party open platforms. Shared by the import-time guard and the
  * refresh orchestrator so the rejection rule — and its message — lives in one
  * place.
@@ -121,7 +121,7 @@ export function isReservedProviderId(providerId: string): boolean {
 }
 
 export function reservedProviderIdMessage(providerId: string): string {
-  return `Custom registry provider id "${providerId}" is reserved by Kimi Code.`;
+  return `Custom registry provider id "${providerId}" is reserved by Lacrous Kimi Code.`;
 }
 
 export function oauthManagedProviderMessage(providerId: string): string {

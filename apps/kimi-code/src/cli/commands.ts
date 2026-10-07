@@ -133,7 +133,7 @@ export function createProgram(
   program
     .command('upgrade')
     .alias('update')
-    .description('Upgrade Kimi Code to the latest version.')
+    .description('Upgrade Lacrous Kimi Code to the latest version.')
     .option('-y, --yes', 'Skip the confirmation prompt and install the update directly.', false)
     .action(async (options: { yes?: boolean }) => {
       await onUpgrade(options.yes === true);

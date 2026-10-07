@@ -1638,7 +1638,7 @@ describe('SessionEventBroadcaster', () => {
       bc.addGlobalTarget(globalView.target);
 
       const changed = [
-        { provider_id: 'managed:kimi-code', provider_name: 'Kimi Code', added: 2, removed: 1 },
+        { provider_id: 'managed:kimi-code', provider_name: 'Lacrous Kimi Code', added: 2, removed: 1 },
       ];
       const failed = [{ provider: 'managed:kimi-code', reason: 'network disabled' }];
       eventBus.emit({
@@ -1711,7 +1711,7 @@ describe('SessionEventBroadcaster', () => {
       });
 
       const changed = [
-        { provider_id: 'managed:kimi-code', provider_name: 'Kimi Code', added: 1, removed: 0 },
+        { provider_id: 'managed:kimi-code', provider_name: 'Lacrous Kimi Code', added: 1, removed: 0 },
       ];
       eventBus.emit({
         type: 'event.model_catalog.changed',
@@ -3161,7 +3161,7 @@ describe('sessionEventMessageSchema', () => {
         envelope({
           type: 'event.model_catalog.changed',
           changed: [
-            { provider_id: 'managed:kimi-code', provider_name: 'Kimi Code', added: 2, removed: 1 },
+            { provider_id: 'managed:kimi-code', provider_name: 'Lacrous Kimi Code', added: 2, removed: 1 },
           ],
           unchanged: ['openai-main'],
           failed: [{ provider: 'managed:kimi-code', reason: 'network disabled' }],

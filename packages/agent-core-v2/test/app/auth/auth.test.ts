@@ -937,7 +937,7 @@ describe('OAuthService', () => {
     });
   });
 
-  it('refreshOAuthProviderModels returns an empty result when no Kimi Code provider is configured', async () => {
+  it('refreshOAuthProviderModels returns an empty result when no Lacrous Kimi Code provider is configured', async () => {
     providers = { [NON_OAUTH_PROVIDER]: { type: 'openai', apiKey: 'sk-test' } };
     const svc = createService();
 
@@ -973,7 +973,7 @@ describe('OAuthService', () => {
     expect(result.changed).toEqual([
       {
         provider_id: OAUTH_PROVIDER,
-        provider_name: 'Kimi Code',
+        provider_name: 'Lacrous Kimi Code',
         added: 1,
         removed: 0,
       },
@@ -1079,7 +1079,7 @@ describe('OAuthService', () => {
     expect(second.changed).toEqual([
       {
         provider_id: OAUTH_PROVIDER,
-        provider_name: 'Kimi Code',
+        provider_name: 'Lacrous Kimi Code',
         added: 0,
         removed: 0,
       },
@@ -1130,7 +1130,7 @@ describe('OAuthService', () => {
     expect(result.changed).toEqual([
       {
         provider_id: OAUTH_PROVIDER,
-        provider_name: 'Kimi Code',
+        provider_name: 'Lacrous Kimi Code',
         added: 1,
         removed: 0,
       },
@@ -1157,7 +1157,7 @@ describe('OAuthService', () => {
     expect(result.changed).toEqual([
       {
         provider_id: OAUTH_PROVIDER,
-        provider_name: 'Kimi Code',
+        provider_name: 'Lacrous Kimi Code',
         added: 1,
         removed: 0,
       },

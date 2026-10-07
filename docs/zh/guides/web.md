@@ -1,13 +1,13 @@
 # 在网页中使用
 
-Kimi Code Web 是 Kimi Code CLI 内置的浏览器图形界面：在终端运行 `kimi web`，就能在浏览器里新建会话、对话、处理审批、查看文件改动——界面更易读，会话和数据仍全部保存在你的本机。
+Lacrous Kimi Code Web 是 Lacrous Kimi Code CLI 内置的浏览器图形界面：在终端运行 `kimi web`，就能在浏览器里新建会话、对话、处理审批、查看文件改动——界面更易读，会话和数据仍全部保存在你的本机。
 
-![Kimi Code Web 界面](../../media/kimi-web-ui.jpg)
+![Lacrous Kimi Code Web 界面](../../media/kimi-web-ui.jpg)
 
 ## 开始使用
 
 <div class="step">
-<span class="step-num">1</span> <strong>安装并登录 Kimi Code CLI</strong>
+<span class="step-num">1</span> <strong>安装并登录 Lacrous Kimi Code CLI</strong>
 
 `kimi web` 是 CLI 的内置命令，未安装 CLI 时不可用。安装与登录见 [开始使用](./getting-started.md)。
 </div>

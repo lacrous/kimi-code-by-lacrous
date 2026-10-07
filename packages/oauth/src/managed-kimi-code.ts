@@ -143,7 +143,7 @@ export class ManagedKimiCodeModelsAuthError extends OAuthUnauthorizedError {
     readonly credentialKind?: 'oauth' | 'apiKey' | undefined;
   }) {
     super(
-      `Kimi Code models endpoint ${options.baseUrl} rejected ${
+      `Lacrous Kimi Code models endpoint ${options.baseUrl} rejected ${
         options.credentialKind === 'apiKey' ? 'the API key' : 'OAuth credentials'
       }: ${options.message}`,
     );
@@ -446,7 +446,7 @@ function toModelInfo(item: unknown): ManagedKimiCodeModelInfo | undefined {
   }
   const contextLength = Number(item['context_length']);
   if (!Number.isInteger(contextLength) || contextLength <= 0) {
-    throw new Error(`Kimi Code model "${item['id']}" must include a positive context_length.`);
+    throw new Error(`Lacrous Kimi Code model "${item['id']}" must include a positive context_length.`);
   }
   const displayName = item['display_name'];
   const normalizedDisplayName =
@@ -529,7 +529,7 @@ export async function fetchManagedKimiCodeModels(
   if (!response.ok) {
     const message = await readApiErrorMessage(
       response,
-      `Failed to list Kimi Code models (HTTP ${response.status}).`,
+      `Failed to list Lacrous Kimi Code models (HTTP ${response.status}).`,
     );
     if (response.status === 401 || response.status === 402 || response.status === 403) {
       throw new ManagedKimiCodeModelsAuthError({
@@ -600,7 +600,7 @@ export function applyManagedKimiCodeConfig(
   },
 ): ManagedKimiCodeApplyResult {
   if (options.models.length === 0) {
-    throw new Error('No models available for Kimi Code.');
+    throw new Error('No models available for Lacrous Kimi Code.');
   }
   for (const model of options.models) {
     assertPositiveContextLength(model);
@@ -672,7 +672,7 @@ export function applyManagedKimiCodeConfig(
 
 /**
  * Merge refreshed `/models` entries into the aliases of an api-key provider
- * pointing at the managed Kimi Code endpoint (a hand-configured provider using
+ * pointing at the managed Lacrous Kimi Code endpoint (a hand-configured provider using
  * a distributed API key instead of OAuth). Unlike `applyManagedKimiCodeConfig`
  * this touches ONLY `config.models`: the provider record (type / baseUrl /
  * apiKey and any hand-written extras), `services`, `defaultModel`, and
@@ -767,7 +767,7 @@ function selectDefaultModel(
 ): SelectedDefaultModel {
   const firstModel = models[0];
   if (firstModel === undefined) {
-    throw new Error('No models available for Kimi Code.');
+    throw new Error('No models available for Lacrous Kimi Code.');
   }
 
   const managedModels = new Map(models.map((model) => [managedModelKey(model.id), model]));
@@ -854,7 +854,7 @@ export function clearManagedKimiCodeConfig(
 
 function assertPositiveContextLength(model: ManagedKimiCodeModelInfo): void {
   if (!Number.isInteger(model.contextLength) || model.contextLength <= 0) {
-    throw new Error(`Kimi Code model "${model.id}" must include a positive context_length.`);
+    throw new Error(`Lacrous Kimi Code model "${model.id}" must include a positive context_length.`);
   }
 }
 

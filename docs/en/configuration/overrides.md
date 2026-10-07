@@ -1,6 +1,6 @@
 # Config overrides
 
-Kimi Code CLI has three places where runtime parameters can be influenced: the config file, command-line options, and environment variables. They are not a simple priority stack: the three serve different scenarios and have non-overlapping scopes:
+Lacrous Kimi Code CLI has three places where runtime parameters can be influenced: the config file, command-line options, and environment variables. They are not a simple priority stack: the three serve different scenarios and have non-overlapping scopes:
 
 - **Config file** stores long-term preferences (model, keys, loop control, etc.); takes effect on every startup
 - **Command-line options** make one-off changes for the current startup; discarded after exit

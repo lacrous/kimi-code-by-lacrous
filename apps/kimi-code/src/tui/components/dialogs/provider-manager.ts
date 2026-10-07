@@ -7,7 +7,7 @@
  *     (1 source = N providers from the same api.json fetch)
  *   - any other configured provider (1 source = 1 provider)
  *   - a synthetic final `[ Add New Platform ]` action row
- * Kimi Code OAuth (`DEFAULT_OAUTH_PROVIDER_NAME`) is intentionally hidden
+ * Lacrous Kimi Code OAuth (`DEFAULT_OAUTH_PROVIDER_NAME`) is intentionally hidden
  * — that account is managed through `/login` / `/logout`, not here.
  *
  * Keyboard:

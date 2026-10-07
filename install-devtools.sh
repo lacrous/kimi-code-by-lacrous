@@ -444,7 +444,7 @@ check_screen() {
 }
 
 main() {
-  printf '\nKimi Code (lacrous fork) installer\n'
+  printf '\nLacrous Kimi Code installer\n'
   printf 'repository: %s\n\n' "$REPO_ROOT"
 
   install_tools_system

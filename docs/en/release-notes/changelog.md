@@ -4,7 +4,7 @@ outline: 2
 
 # Changelog
 
-This page documents the changes in each Kimi Code CLI release.
+This page documents the changes in each Lacrous Kimi Code CLI release.
 
 ## 2.1.1 (2026-09-24)
 
@@ -20,7 +20,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ### Features
 
-- Add an experimental fullscreen mode toggle for the TUI. Enable it via the TUI mode setting in `/settings`, or set `tui_mode = "fullscreen"` in `~/.kimi-code/tui.toml`; it takes effect after restarting Kimi Code.
+- Add an experimental fullscreen mode toggle for the TUI. Enable it via the TUI mode setting in `/settings`, or set `tui_mode = "fullscreen"` in `~/.kimi-code/tui.toml`; it takes effect after restarting Lacrous Kimi Code.
 - In fullscreen, click a folded block to open or close it.
 - Add a clickable "Jump to bottom" indicator to the fullscreen TUI.
 
@@ -640,7 +640,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ### Features
 
-- Add a builtin `/check-kimi-code-docs` skill that automatically answers Kimi Code product questions with official-docs sources.
+- Add a builtin `/check-kimi-code-docs` skill that automatically answers Lacrous Kimi Code product questions with official-docs sources.
 
 ### Polish
 
@@ -1048,7 +1048,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ### Features
 
-- Support the Anthropic-compatible protocol for Kimi Code, including video input.
+- Support the Anthropic-compatible protocol for Lacrous Kimi Code, including video input.
 - Add a completion sound and question notifications to the web UI, with separate Settings toggles for completion notifications, question notifications, and sound. Question notifications default off so question text only reaches your desktop after you opt in.
 - Add `KIMI_CODE_CUSTOM_HEADERS` for custom outbound LLM request headers, and send the `User-Agent` header to non-Kimi providers. Set `KIMI_CODE_CUSTOM_HEADERS` to newline-separated `Name: Value` lines.
 - Add an optional `exclude_empty` parameter to the session list API to omit sessions that have no messages.
@@ -1079,7 +1079,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ### Refactors
 
-- Route Kimi Code models on the Anthropic-compatible protocol through the beta Messages API.
+- Route Lacrous Kimi Code models on the Anthropic-compatible protocol through the beta Messages API.
 - Upgrade web markdown renderer dependencies (katex, markstream-vue, shiki) for bug fixes and performance improvements.
 - Add provider type and protocol attributes to turn and API error telemetry.
 
@@ -1269,7 +1269,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ### Features
 
-- Add Kimi Code Web mode, which you can start with `kimi web` or `/web` in the CLI, and continue sessions in a browser chat interface.
+- Add Lacrous Kimi Code Web mode, which you can start with `kimi web` or `/web` in the CLI, and continue sessions in a browser chat interface.
 
 ### Bug Fixes
 
@@ -1396,7 +1396,7 @@ This page documents the changes in each Kimi Code CLI release.
 ### Bug Fixes
 
 - Prevent forking sessions during active turns and consolidate wire protocol definitions into a shared internal package.
-- Fix Kimi Datasource to use the matching OAuth credentials and service endpoint for the active Kimi Code environment.
+- Fix Kimi Datasource to use the matching OAuth credentials and service endpoint for the active Lacrous Kimi Code environment.
 - Fix goal marker text overflowing terminal width.
 
 ### Polish
@@ -1508,7 +1508,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Add the built-in `update-config` skill — you can now have Kimi edit its own config files.
 - Add persistent experimental feature toggles and a TUI panel that applies confirmed changes by reloading the current session.
 - Add `/reload` to reload the current session and apply updated config files, plus `/reload-tui` to reload only TUI preferences.
-- Add a doctor command for validating Kimi Code configuration files.
+- Add a doctor command for validating Lacrous Kimi Code configuration files.
 
 ### Bug Fixes
 
@@ -1575,7 +1575,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Add background structured questions so agents can continue while waiting for user answers.
 - Add background automatic upgrades, which can be disabled in tui.toml.
 - Add `/undo` slash command to withdraw the last prompt from conversation history, and keep replay records in sync when a prompt is undone.
-- Add a `kimi upgrade` command for manually checking and upgrade Kimi Code CLI.
+- Add a `kimi upgrade` command for manually checking and upgrade Lacrous Kimi Code CLI.
 - Add approval lifecycle hook events for observing pending and completed permission prompts.
 - Allow subagents to use custom tools registered on their parent agent.
 - Allow glob searches to target explicit absolute paths outside the workspace.
@@ -1626,7 +1626,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ### Features
 
-- Add a `KIMI_MODEL_*` environment-variable channel that lets you run Kimi Code against a specific model (provider type, base URL, API key, context size, capabilities, and thinking settings) without editing `config.toml`.
+- Add a `KIMI_MODEL_*` environment-variable channel that lets you run Lacrous Kimi Code against a specific model (provider type, base URL, API key, context size, capabilities, and thinking settings) without editing `config.toml`.
 - Install plugins directly from GitHub repository URLs, and surface each install's origin and trust level (kimi-official, curated, third-party) in the plugin manager.
 
 ### Bug Fixes

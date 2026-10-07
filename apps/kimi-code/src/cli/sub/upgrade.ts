@@ -95,7 +95,7 @@ export async function handleUpgrade(
     logUpgradeInfo(deps.logger, 'manual upgrade no update', {
       currentVersion,
     });
-    deps.stdout.write(`Kimi Code is already up to date (${formatDisplayVersion(currentVersion)}).\n`);
+    deps.stdout.write(`Lacrous Kimi Code is already up to date (${formatDisplayVersion(currentVersion)}).\n`);
     return 0;
   }
 

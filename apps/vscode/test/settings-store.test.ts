@@ -155,7 +155,7 @@ describe("Webview model metadata", () => {
       models: group.models.map((model) => model.id),
     }))).toEqual([
       { provider: "company-proxy", label: "company-proxy", models: ["proxy/shared"] },
-      { provider: "managed:kimi-code", label: "Kimi Code", models: ["kimi/shared"] },
+      { provider: "managed:kimi-code", label: "Lacrous Kimi Code", models: ["kimi/shared"] },
     ]);
   });
 

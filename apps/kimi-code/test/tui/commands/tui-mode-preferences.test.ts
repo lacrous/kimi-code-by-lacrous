@@ -50,7 +50,7 @@ describe('tui mode preference commands', () => {
     expect(host.setAppState).toHaveBeenCalledWith({ tuiMode: 'fullscreen' });
     expect(host.showStatus).toHaveBeenCalledWith('TUI mode set to fullscreen.', 'success');
     expect(host.showNotice).toHaveBeenCalledWith(
-      'TUI mode takes effect after restarting Kimi Code.',
+      'TUI mode takes effect after restarting Lacrous Kimi Code.',
     );
   });
 

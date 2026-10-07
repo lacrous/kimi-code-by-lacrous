@@ -6,11 +6,11 @@ import { ChoicePickerComponent, type ChoiceOption } from './choice-picker';
 
 const KIMI_CODE_MAINLAND_CN_OPTION: ChoiceOption = {
   value: 'kimi-code',
-  label: 'Kimi Code (kimi.com/code)',
+  label: 'Lacrous Kimi Code (kimi.com/code)',
 };
 const KIMI_CODE_GLOBAL_OPTION: ChoiceOption = {
   value: KIMI_CODE_GLOBAL_PLATFORM_VALUE,
-  label: 'Kimi Code (kimi.ai/code)',
+  label: 'Lacrous Kimi Code (kimi.ai/code)',
 };
 
 function platformOptions(): readonly ChoiceOption[] {

@@ -1,6 +1,6 @@
 # Hooks
 
-Hooks are an automatic trigger mechanism: you tell Kimi Code CLI in advance "whenever X happens, run this script." The script runs on your local machine, and you can put any logic inside it. Typical use cases:
+Hooks are an automatic trigger mechanism: you tell Lacrous Kimi Code CLI in advance "whenever X happens, run this script." The script runs on your local machine, and you can put any logic inside it. Typical use cases:
 
 - **Security interception**: Before the Agent executes a shell command, check whether it contains dangerous operations (such as `rm -rf`) and block execution if so
 - **Desktop notifications**: When a background task completes, pop up a system notification to bring you back to review the results
@@ -158,7 +158,7 @@ process.stdin.on('end', () => {
 });
 ```
 
-After blocking, Kimi Code CLI writes the blocking reason back into the context, and the model can use this to choose a safer alternative.
+After blocking, Lacrous Kimi Code CLI writes the blocking reason back into the context, and the model can use this to choose a safer alternative.
 
 ::: warning Note
 This example only demonstrates the blocking mechanism and is not a production-grade security parser. Real scenarios are better served by whitelists, or a dedicated shell parser to handle quoting, variable expansion, and multi-command sequences.

@@ -38,7 +38,7 @@
 
 - [#3990](https://github.com/MoonshotAI/kimi-code/pull/3990) [`32000d0`](https://github.com/MoonshotAI/kimi-code/commit/32000d08afcd019016fa60db0d68eaf21f3e35a6) Thanks [@Grapedge](https://github.com/Grapedge)! - In fullscreen, click a folded block to open or close it.
 
-- [#4004](https://github.com/MoonshotAI/kimi-code/pull/4004) [`e17ff67`](https://github.com/MoonshotAI/kimi-code/commit/e17ff679281e340fd328bc2ebaba1237e79a9ad3) Thanks [@Grapedge](https://github.com/Grapedge)! - Add a TUI mode setting to /settings with an experimental fullscreen layout; switching modes takes effect after restarting Kimi Code. You can also set `tui_mode` in `~/.kimi-code/tui.toml` directly: `"regular"` renders into the terminal scrollback, while `"fullscreen"` makes parts of the UI mouse-interactive for a smoother experience.
+- [#4004](https://github.com/MoonshotAI/kimi-code/pull/4004) [`e17ff67`](https://github.com/MoonshotAI/kimi-code/commit/e17ff679281e340fd328bc2ebaba1237e79a9ad3) Thanks [@Grapedge](https://github.com/Grapedge)! - Add a TUI mode setting to /settings with an experimental fullscreen layout; switching modes takes effect after restarting Lacrous Kimi Code. You can also set `tui_mode` in `~/.kimi-code/tui.toml` directly: `"regular"` renders into the terminal scrollback, while `"fullscreen"` makes parts of the UI mouse-interactive for a smoother experience.
 
 ### Patch Changes
 
@@ -142,7 +142,7 @@
 
 ### Major Changes
 
-- [#3849](https://github.com/MoonshotAI/kimi-code/pull/3849) [`34ec5d2`](https://github.com/MoonshotAI/kimi-code/commit/34ec5d2a1700e540c39d2a1b6c905c9fa96af2db) Thanks [@wbxl2000](https://github.com/wbxl2000)! - Add the /desktop slash command (alias /install-desktop) and the kimi install-app subcommand to open the Kimi Code desktop app page in the browser.
+- [#3849](https://github.com/MoonshotAI/kimi-code/pull/3849) [`34ec5d2`](https://github.com/MoonshotAI/kimi-code/commit/34ec5d2a1700e540c39d2a1b6c905c9fa96af2db) Thanks [@wbxl2000](https://github.com/wbxl2000)! - Add the /desktop slash command (alias /install-desktop) and the kimi install-app subcommand to open the Lacrous Kimi Code desktop app page in the browser.
 
 ### Minor Changes
 
@@ -224,7 +224,7 @@
 
 - [#3750](https://github.com/MoonshotAI/kimi-code/pull/3750) [`775a6c3`](https://github.com/MoonshotAI/kimi-code/commit/775a6c35de40e6dd8cc399cc848f95818733ee7c) Thanks [@7Sageer](https://github.com/7Sageer)! - Add the `loop_control.compaction_max_attempts` config option to set the maximum total attempts for a failing compaction request (default 5).
 
-- [#3667](https://github.com/MoonshotAI/kimi-code/pull/3667) [`9296e68`](https://github.com/MoonshotAI/kimi-code/commit/9296e6877032328fcd9cf1d145f9286bec140897) Thanks [@sailist](https://github.com/sailist)! - Add the dynamically_loaded_tools capability to official Kimi Code models when the service declares support for message-level tool declarations.
+- [#3667](https://github.com/MoonshotAI/kimi-code/pull/3667) [`9296e68`](https://github.com/MoonshotAI/kimi-code/commit/9296e6877032328fcd9cf1d145f9286bec140897) Thanks [@sailist](https://github.com/sailist)! - Add the dynamically_loaded_tools capability to official Lacrous Kimi Code models when the service declares support for message-level tool declarations.
 
 - [#3763](https://github.com/MoonshotAI/kimi-code/pull/3763) [`dd6a411`](https://github.com/MoonshotAI/kimi-code/commit/dd6a4116ddfcc56cb3d37b0c1d526d64cb36086b) Thanks [@liruifengv](https://github.com/liruifengv)! - web: fix sessions containing many brackets or backslashes getting stuck while loading.
 
@@ -1430,7 +1430,7 @@
 
 - [#1704](https://github.com/MoonshotAI/kimi-code/pull/1704) [`38a2363`](https://github.com/MoonshotAI/kimi-code/commit/38a2363a006d8ed32ff6100ccff2dc7d1a70b2b0) Thanks [@sailist](https://github.com/sailist)! - Align the subagent timeout across engines: a fixed 2-hour default, overridable with `[subagent] timeout_ms` in config.toml or the KIMI_SUBAGENT_TIMEOUT_MS environment variable.
 
-- [#1727](https://github.com/MoonshotAI/kimi-code/pull/1727) [`286d3e7`](https://github.com/MoonshotAI/kimi-code/commit/286d3e7aca40a778cc4136eb377e14f14c70141c) Thanks [@liruifengv](https://github.com/liruifengv)! - Add a builtin `check-kimi-code-docs` skill that answers Kimi Code product questions (CLI usage, configuration, membership, error codes) against the official documentation with source links. It triggers automatically on product questions, or run `/check-kimi-code-docs`.
+- [#1727](https://github.com/MoonshotAI/kimi-code/pull/1727) [`286d3e7`](https://github.com/MoonshotAI/kimi-code/commit/286d3e7aca40a778cc4136eb377e14f14c70141c) Thanks [@liruifengv](https://github.com/liruifengv)! - Add a builtin `check-kimi-code-docs` skill that answers Lacrous Kimi Code product questions (CLI usage, configuration, membership, error codes) against the official documentation with source links. It triggers automatically on product questions, or run `/check-kimi-code-docs`.
 
 - [#1707](https://github.com/MoonshotAI/kimi-code/pull/1707) [`8490c3e`](https://github.com/MoonshotAI/kimi-code/commit/8490c3e36b6a6cc3ba5c0f15d93b87347ce23878) Thanks [@sailist](https://github.com/sailist)! - Add the number of messages dropped during compaction retries to the session wire log's LLM request traces.
 
@@ -2069,11 +2069,11 @@
 
 - [#1186](https://github.com/MoonshotAI/kimi-code/pull/1186) [`821847c`](https://github.com/MoonshotAI/kimi-code/commit/821847cb4b88d9128014609aad307ab8d9e9a5f3) - Add `KIMI_CODE_CUSTOM_HEADERS` for custom outbound LLM request headers and send the `User-Agent` header to non-Kimi providers. Set `KIMI_CODE_CUSTOM_HEADERS` to newline-separated `Name: Value` lines.
 
-- [#1186](https://github.com/MoonshotAI/kimi-code/pull/1186) [`821847c`](https://github.com/MoonshotAI/kimi-code/commit/821847cb4b88d9128014609aad307ab8d9e9a5f3) - Route managed Kimi Code models on the Anthropic-compatible protocol through the beta Messages API.
+- [#1186](https://github.com/MoonshotAI/kimi-code/pull/1186) [`821847c`](https://github.com/MoonshotAI/kimi-code/commit/821847cb4b88d9128014609aad307ab8d9e9a5f3) - Route managed Lacrous Kimi Code models on the Anthropic-compatible protocol through the beta Messages API.
 
 - [#1170](https://github.com/MoonshotAI/kimi-code/pull/1170) [`cf558cd`](https://github.com/MoonshotAI/kimi-code/commit/cf558cd74267393d6497ddedf25e192eaac4f94b) - Recover from provider 413 context overflows by compacting before retrying.
 
-- [#1170](https://github.com/MoonshotAI/kimi-code/pull/1170) [`cf558cd`](https://github.com/MoonshotAI/kimi-code/commit/cf558cd74267393d6497ddedf25e192eaac4f94b) - Support the Anthropic-compatible protocol for managed Kimi Code, including video input.
+- [#1170](https://github.com/MoonshotAI/kimi-code/pull/1170) [`cf558cd`](https://github.com/MoonshotAI/kimi-code/commit/cf558cd74267393d6497ddedf25e192eaac4f94b) - Support the Anthropic-compatible protocol for managed Lacrous Kimi Code, including video input.
 
 - [#1186](https://github.com/MoonshotAI/kimi-code/pull/1186) [`821847c`](https://github.com/MoonshotAI/kimi-code/commit/821847cb4b88d9128014609aad307ab8d9e9a5f3) - Add provider type and protocol attributes to turn and API error telemetry.
 
@@ -2542,7 +2542,7 @@
 
 - [#598](https://github.com/MoonshotAI/kimi-code/pull/598) [`32d7080`](https://github.com/MoonshotAI/kimi-code/commit/32d708083730c14090f855b1fcb650e2bc713797) - Clarify active skill prompts so loaded skills are no longer represented as system reminders.
 
-- [#595](https://github.com/MoonshotAI/kimi-code/pull/595) [`1580f35`](https://github.com/MoonshotAI/kimi-code/commit/1580f35136eed02331dcff6c8482247d5cf35458) - Fix Kimi Datasource to use the matching OAuth credentials and service endpoint for the active Kimi Code environment.
+- [#595](https://github.com/MoonshotAI/kimi-code/pull/595) [`1580f35`](https://github.com/MoonshotAI/kimi-code/commit/1580f35136eed02331dcff6c8482247d5cf35458) - Fix Kimi Datasource to use the matching OAuth credentials and service endpoint for the active Lacrous Kimi Code environment.
 
 - [#619](https://github.com/MoonshotAI/kimi-code/pull/619) [`1fbe0e4`](https://github.com/MoonshotAI/kimi-code/commit/1fbe0e4ee89241bee6b5b1d5a4a38b6c6de3c5bf) - Fix goal marker text overflowing terminal width.
 
@@ -2685,7 +2685,7 @@
 
 - [#393](https://github.com/MoonshotAI/kimi-code/pull/393) [`beb12ac`](https://github.com/MoonshotAI/kimi-code/commit/beb12ac0216818a5c5eda24fb304e4ab01792784) - Users now can prepare several goals for the agent to work on sequentially. The agent will pick up the next goal from the queue once the current goal is completed. Use `/goal next <objective>` to queue a goal and `/goal next manage` to review and change the queue interactively.
 
-- [#431](https://github.com/MoonshotAI/kimi-code/pull/431) [`6a4e4c7`](https://github.com/MoonshotAI/kimi-code/commit/6a4e4c75d4bf6db3fefbb5c115d7a7c324bcae16) - Add a doctor command for validating Kimi Code configuration files.
+- [#431](https://github.com/MoonshotAI/kimi-code/pull/431) [`6a4e4c7`](https://github.com/MoonshotAI/kimi-code/commit/6a4e4c75d4bf6db3fefbb5c115d7a7c324bcae16) - Add a doctor command for validating Lacrous Kimi Code configuration files.
 
 ### Patch Changes
 
@@ -2765,7 +2765,7 @@
 
 - [#277](https://github.com/MoonshotAI/kimi-code/pull/277) [`a217ff0`](https://github.com/MoonshotAI/kimi-code/commit/a217ff09aad0665b1501b156c2cc1f186b876087) - Add `/undo` slash command to withdraw the last prompt from conversation history, and keep replay records in sync when a prompt is undone.
 
-- [#334](https://github.com/MoonshotAI/kimi-code/pull/334) [`eeefa98`](https://github.com/MoonshotAI/kimi-code/commit/eeefa98083e9d037d2ba7c59de9e5eb51b19fdd7) - Add a `kimi upgrade` command for manually checking and upgrade Kimi Code CLI.
+- [#334](https://github.com/MoonshotAI/kimi-code/pull/334) [`eeefa98`](https://github.com/MoonshotAI/kimi-code/commit/eeefa98083e9d037d2ba7c59de9e5eb51b19fdd7) - Add a `kimi upgrade` command for manually checking and upgrade Lacrous Kimi Code CLI.
 
 - [#336](https://github.com/MoonshotAI/kimi-code/pull/336) [`7cda9c3`](https://github.com/MoonshotAI/kimi-code/commit/7cda9c3866bad6b3ce8f95c383a111e1ee5e9325) - Add approval lifecycle hook events for observing pending and completed permission prompts.
 
@@ -2827,7 +2827,7 @@
 
 ### Minor Changes
 
-- [#212](https://github.com/MoonshotAI/kimi-code/pull/212) [`2bbea75`](https://github.com/MoonshotAI/kimi-code/commit/2bbea75ee4c0b11f12d2921061774426df40479a) - Add a `KIMI_MODEL_*` environment-variable channel that lets you run Kimi Code against a specific model (provider type, base URL, API key, context size, capabilities, and thinking settings) without editing `config.toml`.
+- [#212](https://github.com/MoonshotAI/kimi-code/pull/212) [`2bbea75`](https://github.com/MoonshotAI/kimi-code/commit/2bbea75ee4c0b11f12d2921061774426df40479a) - Add a `KIMI_MODEL_*` environment-variable channel that lets you run Lacrous Kimi Code against a specific model (provider type, base URL, API key, context size, capabilities, and thinking settings) without editing `config.toml`.
 
 - [#221](https://github.com/MoonshotAI/kimi-code/pull/221) [`bab2da7`](https://github.com/MoonshotAI/kimi-code/commit/bab2da7b1c785d6deba25decb1411f8f5a70de8c) - Install plugins directly from GitHub repository URLs, and surface each install's origin and trust level (kimi-official, curated, third-party) in the plugin manager.
 

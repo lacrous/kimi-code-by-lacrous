@@ -163,7 +163,7 @@ describe('experimental feature command handlers', () => {
     await applyExperimentalFeatureChanges(host, [{ id: 'tower', enabled: true }]);
 
     expect(host.showNotice).toHaveBeenCalledWith(
-      'Tower mode takes effect after restarting Kimi Code.',
+      'Tower mode takes effect after restarting Lacrous Kimi Code.',
     );
   });
 

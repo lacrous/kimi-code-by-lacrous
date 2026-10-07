@@ -4,7 +4,7 @@ This fork exists because of two projects and two people.
 
 ## Upstream
 
-**Kimi Code CLI** — Moonshot AI · MIT License
+**Lacrous Kimi Code CLI** — Moonshot AI · MIT License
 <https://github.com/MoonshotAI/kimi-code> · <https://moonshotai.github.io/kimi-code/en/>
 
 Everything in this repository that is not listed under "Fork changes" below is upstream
@@ -63,7 +63,7 @@ any package registry; build from source.
 
 ## Acknowledgements
 
-- **Moonshot AI** for Kimi Code CLI, the foundation of this fork.
+- **Moonshot AI** for Lacrous Kimi Code CLI, the foundation of this fork.
 - [`pi-tui`](https://github.com/earendil-works/pi-mono/tree/main/packages/tui) — upstream's TUI
   layer, used under its original license.
 - The vendors behind the built-in providers (Cline, OpenRouter, OpenCode, NVIDIA, NaraRouter,

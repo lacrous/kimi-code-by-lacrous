@@ -21,18 +21,18 @@ const OPTIONS: readonly StartPermissionOption<SwarmStartPermissionChoice>[] = [
     value: 'yolo',
     label: 'Switch to Ask When Needed and start',
     description:
-      'Tools and plan changes are approved automatically. Kimi Code may still ask you questions.',
+      'Tools and plan changes are approved automatically. Lacrous Kimi Code may still ask you questions.',
   },
   {
     value: 'manual',
     label: 'Start in Always Ask',
     description:
-      'Keep approvals on. Kimi Code may stop and wait for you during the swarm task.',
+      'Keep approvals on. Lacrous Kimi Code may stop and wait for you during the swarm task.',
   },
 ];
 
 const NOTICE_LINES = [
-  'Always Ask mode asks you before Kimi Code runs commands, edits files, or takes other risky actions.',
+  'Always Ask mode asks you before Lacrous Kimi Code runs commands, edits files, or takes other risky actions.',
   'Always Ask mode can block swarm work while agents are running.',
   'You can go back without losing your command.',
 ] as const;

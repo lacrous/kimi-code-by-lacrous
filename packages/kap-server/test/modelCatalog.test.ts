@@ -363,7 +363,7 @@ describe('server-v2 /api/v1 model/provider catalog', () => {
   it('refreshes OAuth provider models through POST /providers:refresh_oauth', async () => {
     const refreshOAuthProviderModels = vi.fn(async () => ({
       changed: [
-        { provider_id: 'managed:kimi-code', provider_name: 'Kimi Code', added: 1, removed: 0 },
+        { provider_id: 'managed:kimi-code', provider_name: 'Lacrous Kimi Code', added: 1, removed: 0 },
       ],
       unchanged: [],
       failed: [],
@@ -381,7 +381,7 @@ describe('server-v2 /api/v1 model/provider catalog', () => {
     expect(body.code).toBe(0);
     expect(body.data).toEqual({
       changed: [
-        { provider_id: 'managed:kimi-code', provider_name: 'Kimi Code', added: 1, removed: 0 },
+        { provider_id: 'managed:kimi-code', provider_name: 'Lacrous Kimi Code', added: 1, removed: 0 },
       ],
       unchanged: [],
       failed: [],
@@ -392,7 +392,7 @@ describe('server-v2 /api/v1 model/provider catalog', () => {
   it('refreshes all provider models through POST /providers:refresh', async () => {
     const refreshProviderModels = vi.fn(async () => ({
       changed: [
-        { provider_id: 'managed:kimi-code', provider_name: 'Kimi Code', added: 2, removed: 1 },
+        { provider_id: 'managed:kimi-code', provider_name: 'Lacrous Kimi Code', added: 2, removed: 1 },
       ],
       unchanged: ['moonshot-cn'],
       failed: [],

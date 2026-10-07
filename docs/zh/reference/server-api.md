@@ -2413,5 +2413,5 @@ locator 寻址的目录（脱敏配置），外加对每个 OAuth 候选的批�
 
 ## 下一步
 
-- [在网页中使用](../guides/web.md) — 启动服务并在浏览器中使用 Kimi Code
+- [在网页中使用](../guides/web.md) — 启动服务并在浏览器中使用 Lacrous Kimi Code
 - [kimi 命令](./kimi-command.md#kimi-web) — `kimi web` 的全部命令行选项

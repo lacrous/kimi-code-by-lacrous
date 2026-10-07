@@ -1,6 +1,6 @@
 # Data locations
 
-Kimi Code CLI stores the config file, session history, login credentials, diagnostic logs, and other runtime data under `~/.kimi-code/`. This page helps you understand where each type of data lives, what it is for, and how to clean up or relocate it when needed.
+Lacrous Kimi Code CLI stores the config file, session history, login credentials, diagnostic logs, and other runtime data under `~/.kimi-code/`. This page helps you understand where each type of data lives, what it is for, and how to clean up or relocate it when needed.
 
 ## Data root directory
 
@@ -16,7 +16,7 @@ If you need to move the data directory elsewhere (for example, to isolate config
 export KIMI_CODE_HOME="$HOME/.config/kimi-code"
 ```
 
-Once set, **all** Kimi Code data lands under the new path: config, sessions, logs, OAuth credentials, Kimi-specific user Skills, global `AGENTS.md`, and more. For the full reference on `KIMI_CODE_HOME`, see [Environment variables](./env-vars.md).
+Once set, **all** Lacrous Kimi Code data lands under the new path: config, sessions, logs, OAuth credentials, Kimi-specific user Skills, global `AGENTS.md`, and more. For the full reference on `KIMI_CODE_HOME`, see [Environment variables](./env-vars.md).
 
 ::: tip Note
 

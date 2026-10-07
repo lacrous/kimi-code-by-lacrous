@@ -8,7 +8,7 @@
 > [lacrous](https://github.com/lacrous) under a different npm name than
 > Moonshot AI's [`@moonshot-ai/kimi-code`](https://www.npmjs.com/package/@moonshot-ai/kimi-code),
 > from source at [lacrous/kimi-code-by-lacrous](https://github.com/lacrous/kimi-code-by-lacrous).
-> It is not affiliated with or endorsed by Moonshot AI. Kimi, Kimi Code and
+> It is not affiliated with or endorsed by Moonshot AI. Kimi, Lacrous Kimi Code and
 > related names and marks are the property of their respective owner.
 >
 > What this fork changes: model discovery for hand-written providers, 17
@@ -23,9 +23,9 @@
 > package at a version that does not exist. Upgrade with
 > `npm install -g @lacrous/kimi-code@latest`.
 
-## What is Kimi Code CLI
+## What is Lacrous Kimi Code CLI
 
-Kimi Code CLI is an AI coding agent that runs in your terminal. It can read and edit code, run shell commands, search files, fetch web pages, and choose the next step based on the feedback it receives. It works out of the box with Moonshot AI's Kimi models and can also be configured to use other compatible providers.
+Lacrous Kimi Code CLI is an AI coding agent that runs in your terminal. It can read and edit code, run shell commands, search files, fetch web pages, and choose the next step based on the feedback it receives. It works out of the box with Moonshot AI's Kimi models and can also be configured to use other compatible providers.
 
 ## Install
 
@@ -46,7 +46,7 @@ pnpm add -g @lacrous/kimi-code
 
 Requires Node.js 22.19.0 or later.
 
-On Windows, install [Git for Windows](https://gitforwindows.org/) before first launch because Kimi Code CLI uses the bundled Git Bash as its shell environment. If Git Bash is installed in a custom location, set `KIMI_SHELL_PATH` to the absolute path of `bash.exe`.
+On Windows, install [Git for Windows](https://gitforwindows.org/) before first launch because Lacrous Kimi Code CLI uses the bundled Git Bash as its shell environment. If Git Bash is installed in a custom location, set `KIMI_SHELL_PATH` to the absolute path of `bash.exe`.
 
 Then run it with a new Terminal session:
 
@@ -69,7 +69,7 @@ cd your-project
 kimi
 ```
 
-On first launch, run `/login` inside Kimi Code CLI and choose either Kimi Code OAuth or a Kimi Platform API key. After login, try a first task:
+On first launch, run `/login` inside Lacrous Kimi Code CLI and choose either Lacrous Kimi Code OAuth or a Kimi Platform API key. After login, try a first task:
 
 ```
 Take a look at this project and explain the main directories.

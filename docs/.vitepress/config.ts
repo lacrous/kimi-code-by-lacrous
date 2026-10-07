@@ -19,8 +19,8 @@ const mermaidOptimizeDeps = [
 
 const config = withMermaid(defineConfig({
   base,
-  title: 'Kimi Code CLI Docs',
-  description: 'Kimi Code CLI Documentation',
+  title: 'Lacrous Kimi Code CLI Docs',
+  description: 'Lacrous Kimi Code CLI Documentation',
 
   head: [
     ['link', { rel: 'icon', type: 'image/x-icon', href: `${base}favicon.ico` }],
@@ -34,8 +34,8 @@ const config = withMermaid(defineConfig({
       label: '简体中文',
       lang: 'zh-CN',
       link: '/zh/',
-      title: 'Kimi Code CLI 文档',
-      description: 'Kimi Code CLI 用户文档',
+      title: 'Lacrous Kimi Code CLI 文档',
+      description: 'Lacrous Kimi Code CLI 用户文档',
       themeConfig: {
         nav: [
           { text: '指南', link: '/zh/guides/getting-started', activeMatch: '/zh/guides/' },
@@ -113,8 +113,8 @@ const config = withMermaid(defineConfig({
       label: 'English',
       lang: 'en-US',
       link: '/en/',
-      title: 'Kimi Code CLI Docs',
-      description: 'Kimi Code CLI User Documentation',
+      title: 'Lacrous Kimi Code CLI Docs',
+      description: 'Lacrous Kimi Code CLI User Documentation',
       themeConfig: {
         nav: [
           { text: 'Guides', link: '/en/guides/getting-started', activeMatch: '/en/guides/' },
@@ -134,7 +134,7 @@ const config = withMermaid(defineConfig({
                 { text: 'Interaction and Input', link: '/en/guides/interaction' },
                 { text: 'Sessions and Context', link: '/en/guides/sessions' },
                 { text: 'Using in IDEs', link: '/en/guides/ides' },
-                { text: 'Using Kimi Code in the browser', link: '/en/guides/web' },
+                { text: 'Using Lacrous Kimi Code in the browser', link: '/en/guides/web' },
                 { text: 'Remote Control', link: '/en/guides/remote-control' },
               ],
             },

@@ -34,7 +34,7 @@ export interface ForkHomeOutcome {
 
 /**
  * Point the fork CLI at its own data home, isolated from an installed upstream
- * Kimi Code that shares the machine. `KIMI_CODE_HOME` always wins; otherwise
+ * Lacrous Kimi Code that shares the machine. `KIMI_CODE_HOME` always wins; otherwise
  * the fork defaults to `~/.lacrous-kimi` and, on the very first run, copies the
  * user data out of a legacy `~/.kimi-code` so existing sessions and config
  * follow. The legacy home is never modified or removed.

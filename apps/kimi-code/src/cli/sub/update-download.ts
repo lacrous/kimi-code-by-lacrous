@@ -97,11 +97,11 @@ export async function runUpdateDownloadCommand(
       // Another worker is already downloading this exact version: wait for it
       // and adopt its verified result instead of exiting on a maybe.
       out.write(
-        `A download of Kimi Code ${version} is already in progress; waiting for it to finish…\n`,
+        `A download of Lacrous Kimi Code ${version} is already in progress; waiting for it to finish…\n`,
       );
       const wait = await waitForStagedUpdate(version, process.execPath, manual);
       if (wait.status === 'staged') {
-        out.write(`Kimi Code ${version} is downloaded; it applies on the next start.\n`);
+        out.write(`Lacrous Kimi Code ${version} is downloaded; it applies on the next start.\n`);
         return 0;
       }
       // The holder finished without staging (failed or died): take over. The
@@ -119,7 +119,7 @@ export async function runUpdateDownloadCommand(
       return 1;
     }
   }
-  const label = `Downloading Kimi Code ${version} (${process.platform}-${process.arch})…`;
+  const label = `Downloading Lacrous Kimi Code ${version} (${process.platform}-${process.arch})…`;
   const onProgress = createDownloadProgress(out, label);
   try {
     const result = await stageNativeUpdate({
@@ -130,7 +130,7 @@ export async function runUpdateDownloadCommand(
     });
     if (out.isTTY) out.write('\n');
     if (result.status === 'already-staged') {
-      out.write(`Kimi Code ${version} is already downloaded; it applies on the next start.\n`);
+      out.write(`Lacrous Kimi Code ${version} is already downloaded; it applies on the next start.\n`);
     }
     return 0;
   } catch (error) {

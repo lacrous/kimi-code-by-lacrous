@@ -1,11 +1,11 @@
 ---
 name: check-kimi-code-docs
-description: Answer questions about the Kimi Code product using the official documentation — CLI usage, configuration, slash commands, features, membership and quota, API onboarding, third-party tool setup, and error codes. Use when the user asks how Kimi Code works, how to set something up, or what a Kimi Code error message means.
+description: Answer questions about the Lacrous Kimi Code product using the official documentation — CLI usage, configuration, slash commands, features, membership and quota, API onboarding, third-party tool setup, and error codes. Use when the user asks how Lacrous Kimi Code works, how to set something up, or what a Lacrous Kimi Code error message means.
 ---
 
-# Check Kimi Code docs (check-kimi-code-docs)
+# Check Lacrous Kimi Code docs (check-kimi-code-docs)
 
-Answer Kimi Code **product** questions from the official documentation site, not from memory. This skill covers product usage ("how do I configure a provider", "what does this error mean", "how does membership quota work"); it is not for developing the Kimi Code repository itself.
+Answer Lacrous Kimi Code **product** questions from the official documentation site, not from memory. This skill covers product usage ("how do I configure a provider", "what does this error mean", "how does membership quota work"); it is not for developing the Lacrous Kimi Code repository itself.
 
 ## The single source of truth
 
@@ -21,7 +21,7 @@ Fetch pages with **FetchURL** before answering. All page links below are relativ
 
 | Question topic | Page (relative to the base URL) |
 | --- | --- |
-| What Kimi Code is; Base URL / API Key; standard vs high-speed model; platform comparison | `./` (home overview) |
+| What Lacrous Kimi Code is; Base URL / API Key; standard vs high-speed model; platform comparison | `./` (home overview) |
 | Membership plans, quota and rate limits, fuel packs | `kimi-code/membership.html` |
 | Install / login / usage FAQ | `kimi-code/faq.html` |
 | Error codes and their meaning (e.g. 401 for high-speed model access) | `kimi-code/error-reference.html` |
@@ -32,7 +32,7 @@ Fetch pages with **FetchURL** before answering. All page links below are relativ
 | Getting started, sessions and context, goals, interaction and input, IDEs, migration, use cases | `kimi-code-cli/guides/` — `getting-started.html`, `sessions.html`, `goals.html`, `interaction.html`, `ides.html`, `migration.html`, `use-cases.html` |
 | Slash commands, keyboard shortcuts, builtin tools, `kimi` command flags, ACP | `kimi-code-cli/reference/` — `slash-commands.html`, `keyboard.html`, `tools.html`, `kimi-command.html`, `kimi-acp.html` |
 | CLI changelog | `kimi-code-cli/release-notes/changelog.html` |
-| Using Kimi Code in Claude Code and other third-party agents | `third-party-tools/other-coding-agents.html` |
+| Using Lacrous Kimi Code in Claude Code and other third-party agents | `third-party-tools/other-coding-agents.html` |
 
 If no row fits the question, fetch the docs home page and follow its navigation links.
 

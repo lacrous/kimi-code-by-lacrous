@@ -1,6 +1,6 @@
 # Plugins
 
-Plugins package reusable Kimi Code CLI capabilities into installable units: they can add [Agent Skills](./skills.md), custom [agents](./agents.md), automatically load a specified Skill at session start, contribute system-prompt instructions, and declare MCP servers to provide real tool capabilities. They are ideal for sharing workflows with a team, connecting to external services, or installing extensions from the [official plugins](#official-plugins).
+Plugins package reusable Lacrous Kimi Code CLI capabilities into installable units: they can add [Agent Skills](./skills.md), custom [agents](./agents.md), automatically load a specified Skill at session start, contribute system-prompt instructions, and declare MCP servers to provide real tool capabilities. They are ideal for sharing workflows with a team, connecting to external services, or installing extensions from the [official plugins](#official-plugins).
 
 ## Installation and Management
 
@@ -99,15 +99,15 @@ Official plugins do not update automatically. When an update is available, you'l
 
 ### Kimi Datasource <Badge type="tip" text="v3.4.0" />
 
-Kimi Datasource is the official Kimi Code data plugin, letting you query financial market data, financial news, macroeconomic indicators, corporate registration records, academic literature, Chinese laws and regulations, and official data from intergovernmental organizations in natural language. No manual API calls or data accounts required.
+Kimi Datasource is the official Lacrous Kimi Code data plugin, letting you query financial market data, financial news, macroeconomic indicators, corporate registration records, academic literature, Chinese laws and regulations, and official data from intergovernmental organizations in natural language. No manual API calls or data accounts required.
 
 Sources include authoritative institutions and leading databases such as the World Bank, IMF, OECD, FRED, WHO, FAO, the National Bureau of Statistics of China, Wind, S&P Capital IQ, SEC EDGAR, Caixin, Xinhua Finance, and Hundsun Juyuan, all traceable to their original publishers.
 
-You must first complete OAuth login with a Kimi Code account via `/login`; data queries consume your Kimi Code plan quota.
+You must first complete OAuth login with a Lacrous Kimi Code account via `/login`; data queries consume your Lacrous Kimi Code plan quota.
 
 #### How to use
 
-1. Describe your need in natural language, and Kimi Code will automatically invoke the data capabilities
+1. Describe your need in natural language, and Lacrous Kimi Code will automatically invoke the data capabilities
 2. Explicitly trigger the data query skill with `/skill:kimi-datasource`
 
 #### What you can do
@@ -159,7 +159,7 @@ Look up national (GB), industry, local, and association standards by number or t
 
 #### Billing and limitations
 
-- Data queries are billed per call and consume Kimi Code account credits
+- Data queries are billed per call and consume Lacrous Kimi Code account credits
 - The plugin provides read-only queries; no write or trading functionality is available
 - Technical indicators and real-time prices are only available during active trading hours
 - AI-generated output is for reference only and does not constitute investment or business advice
@@ -212,7 +212,7 @@ Kimi Computer Use lets AI operate your desktop apps directly, clicking, dragging
 The first time you use Kimi Computer Use after installation, it shows an authorization window. Just follow the prompts:
 
 1. Click **Authorize** next to **Accessibility** and **Screen Recording**, and enable both permissions in System Settings: the former lets it perform clicks, typing, and scrolling; the latter lets it read screen content and locate UI elements
-2. Turn on the **Kimi Code** switch under "Connect local agents", then restart Kimi Code for it to take effect
+2. Turn on the **Lacrous Kimi Code** switch under "Connect local agents", then restart Lacrous Kimi Code for it to take effect
 
 <div style="max-width: 380px; margin: 0 auto;">
 
@@ -222,7 +222,7 @@ The first time you use Kimi Computer Use after installation, it shows an authori
 
 #### Notes for the Windows version
 
-The Windows version (WinCU) installs differently from the macOS one: run `/plugins install https://cdn.kimi.com/kimi-computer-use-windows/latest/kimi-cu-win-plugin.zip` in Kimi Code, then restart after installation. A few things to know before using it:
+The Windows version (WinCU) installs differently from the macOS one: run `/plugins install https://cdn.kimi.com/kimi-computer-use-windows/latest/kimi-cu-win-plugin.zip` in Lacrous Kimi Code, then restart after installation. A few things to know before using it:
 
 - **It may briefly take over your mouse and keyboard**: Unlike the macOS version, the Windows version cannot reliably inject input in the background; it may briefly activate the target window and use your real mouse and keyboard while performing actions
 - **System requirements**: Windows 10 version 1903 (Build 18362) or later, or Windows 11, x64; a real interactive desktop session is required, and Windows Server needs Desktop Experience
@@ -258,7 +258,7 @@ Example:
 {
   "name": "kimi-finance",
   "version": "1.0.0",
-  "description": "Finance data and analysis workflows for Kimi Code CLI",
+  "description": "Finance data and analysis workflows for Lacrous Kimi Code CLI",
   "skills": "./skills/",
   "systemPromptPath": "./SYSTEM.md",
   "sessionStart": {
@@ -313,7 +313,7 @@ Each field (the inline `systemPrompt` and the `systemPromptPath` file) is limite
 
 ### Differences between the two engines
 
-System-prompt contributions take effect on every Kimi Code surface: the interactive TUI, `kimi -p`, and `kimi web` all run on the v2 engine.
+System-prompt contributions take effect on every Lacrous Kimi Code surface: the interactive TUI, `kimi -p`, and `kimi web` all run on the v2 engine.
 
 <details>
 <summary>Instruction refresh behavior under the two engines</summary>
@@ -400,7 +400,7 @@ my-plugin/
       SKILL.md
 ```
 
-`sessionStart.skill` loads a plugin Skill into the main Agent at session start, making it suitable for initialization instructions, workflow rules, or mapping terminology from other tools to Kimi Code CLI. It only injects text; it does not execute code.
+`sessionStart.skill` loads a plugin Skill into the main Agent at session start, making it suitable for initialization instructions, workflow rules, or mapping terminology from other tools to Lacrous Kimi Code CLI. It only injects text; it does not execute code.
 
 Regardless of how a Skill is loaded (`sessionStart.skill`, `/skill:<name>`, or automatic model invocation), `skillInstructions` appears alongside that plugin's Skill.
 

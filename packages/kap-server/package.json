@@ -2,7 +2,7 @@
   "name": "@moonshot-ai/kap-server",
   "version": "0.2.3",
   "private": true,
-  "description": "Kimi Code server backed by the DI × Scope agent engine (agent-core-v2)",
+  "description": "Lacrous Kimi Code server backed by the DI × Scope agent engine (agent-core-v2)",
   "type": "module",
   "exports": {
     ".": {

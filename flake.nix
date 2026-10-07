@@ -1,5 +1,5 @@
 {
-  description = "Kimi Code CLI";
+  description = "Lacrous Kimi Code CLI";
 
   inputs = {
     # Pinned to the 25.11 release channel because nixpkgs-unstable currently
@@ -42,7 +42,7 @@
           node
         else
           throw ''
-            Kimi Code requires Node.js >= ${minNodeVersion},
+            Lacrous Kimi Code requires Node.js >= ${minNodeVersion},
             but nixpkgs only offers ${node.version}.
             Pin a newer nixpkgs revision or update minNodeVersion in flake.nix.
           '';
@@ -128,7 +128,7 @@
             else if pkgs.stdenv.hostPlatform.isDarwin then
               "darwin-x64"
             else
-              throw "Unsupported Kimi Code native target for ${pkgs.stdenv.hostPlatform.system}";
+              throw "Unsupported Lacrous Kimi Code native target for ${pkgs.stdenv.hostPlatform.system}";
 
           kimi-code = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "kimi-code";
@@ -220,7 +220,7 @@
             '';
 
             meta = {
-              description = "Kimi Code CLI";
+              description = "Lacrous Kimi Code CLI";
               homepage = "https://github.com/MoonshotAI/kimi-code";
               license = lib.licenses.mit;
               mainProgram = "kimi";

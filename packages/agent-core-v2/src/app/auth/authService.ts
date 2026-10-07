@@ -405,7 +405,7 @@ export class OAuthService extends Disposable implements IOAuthService {
         await this.config.replace(THINKING_SECTION, next.thinking);
         changed.push({
           provider_id: KIMI_CODE_PROVIDER_NAME,
-          provider_name: 'Kimi Code',
+          provider_name: 'Lacrous Kimi Code',
           added,
           removed,
         });

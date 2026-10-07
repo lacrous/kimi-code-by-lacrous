@@ -29,7 +29,7 @@ export async function prepareDevEnvironment(baseDir = defaultBaseDir) {
   );
   await writeFile(
     join(paths.workspace, 'README.md'),
-    '# Isolated Kimi Code extension development workspace\n',
+    '# Isolated Lacrous Kimi Code extension development workspace\n',
   );
   return paths;
 }

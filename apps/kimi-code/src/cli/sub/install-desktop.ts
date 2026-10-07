@@ -12,7 +12,7 @@ function openDesktopAppPage(): void {
 export function registerInstallDesktopCommand(program: Command): void {
   program
     .command('install-desktop')
-    .description('Print the Kimi Code desktop app page and open it in your browser.')
+    .description('Print the Lacrous Kimi Code desktop app page and open it in your browser.')
     .action(openDesktopAppPage);
 
   program.command('install-app', { hidden: true }).action(openDesktopAppPage);

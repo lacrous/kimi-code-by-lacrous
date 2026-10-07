@@ -2,7 +2,7 @@
 // Stdio MCP server for kimi-datasource.
 //
 // Speaks newline-delimited JSON-RPC 2.0 on stdin/stdout per the MCP "stdio"
-// transport. Implements the minimal surface the Kimi Code host calls:
+// transport. Implements the minimal surface the Lacrous Kimi Code host calls:
 //   - initialize
 //   - notifications/initialized
 //   - tools/list
@@ -319,21 +319,21 @@ async function loadAccessToken() {
   } catch (err) {
     if (isNotFound(err)) {
       throw new Error(
-        `Kimi Code credentials file not found: ${credentialsFile}\nRun /login in Kimi Code first.`,
+        `Lacrous Kimi Code credentials file not found: ${credentialsFile}\nRun /login in Lacrous Kimi Code first.`,
       );
     }
     if (err instanceof SyntaxError) {
-      throw new Error(`Failed to parse Kimi Code credentials file: ${err.message}`);
+      throw new Error(`Failed to parse Lacrous Kimi Code credentials file: ${err.message}`);
     }
     throw err;
   }
 
   if (!isRecord(parsed)) {
-    throw new Error(`Invalid Kimi Code credentials file: ${credentialsFile}`);
+    throw new Error(`Invalid Lacrous Kimi Code credentials file: ${credentialsFile}`);
   }
   const token = typeof parsed.access_token === 'string' ? parsed.access_token : '';
   if (token.length === 0) {
-    throw new Error('Kimi Code credentials do not contain access_token. Run /login again.');
+    throw new Error('Lacrous Kimi Code credentials do not contain access_token. Run /login again.');
   }
   return { kimiHome, token };
 }
@@ -369,7 +369,7 @@ async function callKimiTool(method, params, trace = {}) {
     trace.requestId = extractRequestId(response.headers);
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error('Kimi Code access_token was rejected. Run /login again and retry.');
+        throw new Error('Lacrous Kimi Code access_token was rejected. Run /login again and retry.');
       }
       throw new Error(`HTTP ${response.status} error: ${text}`);
     }

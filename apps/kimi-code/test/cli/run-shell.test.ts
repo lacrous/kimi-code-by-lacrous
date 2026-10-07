@@ -967,7 +967,7 @@ describe('runShell', () => {
     expect(mocks.tuiStart).not.toHaveBeenCalled();
   });
 
-  it('refuses migration when KIMI_SHARE_DIR resolves to the Kimi Code home', async () => {
+  it('refuses migration when KIMI_SHARE_DIR resolves to the Lacrous Kimi Code home', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
       await withEnv({ KIMI_SHARE_DIR: '/tmp/kimi-code-test-home' }, async () => {

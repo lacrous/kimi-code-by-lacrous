@@ -91,7 +91,7 @@ export async function detectMigration(opts: { sourcePath: string; skillsSourcePa
     for (const bucketName of bucketNames) {
       const bucketPath = join(sessionsRoot, bucketName);
       // Skip non-local-kaos buckets (`<kaos>_<md5>`), which cannot be
-      // represented by the local Kimi Code runtime. Every other unknown
+      // represented by the local Lacrous Kimi Code runtime. Every other unknown
       // bucket is user data we failed to map and must remain visible.
       if (!MD5_HEX_RE.test(bucketName)) {
         const separator = bucketName.lastIndexOf('_');

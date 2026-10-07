@@ -23,7 +23,7 @@ describe('Remote Control output', () => {
     vi.stubEnv('FORCE_HYPERLINK', '1');
     const output = formatRemoteControlOutput(outputOptions);
     const url = outputOptions.url;
-    expect(output).toContain('Use Kimi Code on this machine');
+    expect(output).toContain('Use Lacrous Kimi Code on this machine');
     expect(output).toContain('1.');
     expect(output).toContain('2.');
     expect(output).toContain('3.');

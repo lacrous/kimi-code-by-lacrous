@@ -1,7 +1,7 @@
 # kimi-inspect
 
 Web inspector for the kap-server `/api/v1/debug` RPC surface — a read/trigger
-window into a running Kimi Code engine (workspaces, sessions, agents, and the
+window into a running Lacrous Kimi Code engine (workspaces, sessions, agents, and the
 scoped DI registry).
 
 ## Run

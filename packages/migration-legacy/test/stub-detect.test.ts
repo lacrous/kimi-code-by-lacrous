@@ -21,7 +21,7 @@ describe('isConfigStubOrMissing', () => {
     // From packages/kimi-core/src/harness/configs/toml.ts:42
     const stub =
       '# ~/.kimi-code/config.toml\n' +
-      '# Runtime settings for Kimi Code.\n' +
+      '# Runtime settings for Lacrous Kimi Code.\n' +
       '# This file starts empty so built-in defaults can apply.\n' +
       '# Login will populate managed Kimi provider and model entries.\n';
     await writeFile(join(dir, 'config.toml'), stub, 'utf-8');
@@ -31,7 +31,7 @@ describe('isConfigStubOrMissing', () => {
   it('returns false when user added a single non-comment line', async () => {
     const modified =
       '# ~/.kimi-code/config.toml\n' +
-      '# Runtime settings for Kimi Code.\n' +
+      '# Runtime settings for Lacrous Kimi Code.\n' +
       '# This file starts empty so built-in defaults can apply.\n' +
       '# Login will populate managed Kimi provider and model entries.\n' +
       'default_thinking = true\n';
@@ -42,7 +42,7 @@ describe('isConfigStubOrMissing', () => {
   it('returns false on any byte difference, even trailing whitespace', async () => {
     const stubPlusSpace =
       '# ~/.kimi-code/config.toml\n' +
-      '# Runtime settings for Kimi Code.\n' +
+      '# Runtime settings for Lacrous Kimi Code.\n' +
       '# This file starts empty so built-in defaults can apply.\n' +
       '# Login will populate managed Kimi provider and model entries.\n' +
       ' ';

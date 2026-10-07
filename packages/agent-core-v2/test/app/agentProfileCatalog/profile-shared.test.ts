@@ -107,7 +107,7 @@ describe('systemPromptVars', () => {
   it('defaults host-identity variables to the CLI text', () => {
     const vars = systemPromptVars({}, { skillActive: true });
 
-    expect(vars['product_name']).toBe('Kimi Code CLI');
+    expect(vars['product_name']).toBe('Lacrous Kimi Code CLI');
     expect(vars['reply_style_guide']).toBe(DEFAULT_REPLY_STYLE_GUIDE);
   });
 
@@ -263,7 +263,7 @@ describe('renderSystemPromptResult', () => {
 
   it('renders the host identity from the context, defaulting to the CLI text', () => {
     const fallback = renderSystemPromptResult('', {}, { skillActive: true }).text;
-    expect(fallback).toContain('Kimi Code CLI');
+    expect(fallback).toContain('Lacrous Kimi Code CLI');
     expect(fallback).toContain(DEFAULT_REPLY_STYLE_GUIDE);
 
     const overridden = renderSystemPromptResult(
@@ -273,7 +273,7 @@ describe('renderSystemPromptResult', () => {
     ).text;
     expect(overridden).toContain('Kimi Desktop');
     expect(overridden).toContain('GUI_STYLE');
-    expect(overridden).not.toContain('Kimi Code CLI');
+    expect(overridden).not.toContain('Lacrous Kimi Code CLI');
   });
 });
 

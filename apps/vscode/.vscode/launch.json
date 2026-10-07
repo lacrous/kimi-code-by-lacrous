@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Kimi Code: Extension Development Host (isolated)",
+      "name": "Lacrous Kimi Code: Extension Development Host (isolated)",
       "type": "extensionHost",
       "request": "launch",
       "preLaunchTask": "vscode: dev",
