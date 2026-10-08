@@ -90,6 +90,7 @@ import { resolvePasswordHash } from './services/auth/password';
 import { createTokenStore } from './services/auth/tokenStore';
 
 import { drainGlobalSearchDisposals, IGlobalSearchService } from './search/searchService';
+import './search/sessionSearchAdapter';
 
 export interface ServerHostIdentity extends KimiHostIdentity {
   readonly displayName?: string;

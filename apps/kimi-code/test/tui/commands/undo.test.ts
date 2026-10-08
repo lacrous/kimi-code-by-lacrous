@@ -1,6 +1,11 @@
+import type {
+  FileHistoryRestoreResult,
+  FileHistoryTurnSummary,
+} from '@moonshot-ai/kimi-code-sdk';
 import { describe, expect, it, vi } from 'vitest';
 
 import { handleUndoCommand } from '#/tui/commands/undo';
+import { handleRestoreCommand } from '#/tui/commands/restore';
 import type { SlashCommandHost } from '#/tui/commands/dispatch';
 import type { TranscriptEntry } from '#/tui/types';
 
@@ -158,5 +163,223 @@ describe('/undo todo panel refresh', () => {
     await handleUndoCommand(host, '1');
 
     expect(setTodoList).toHaveBeenCalledWith([]);
+  });
+});
+
+const ENTER = '\r';
+const ESCAPE = '\u001B';
+const DOWN = '\u001B[B';
+
+const RESTORABLE_TURNS: readonly FileHistoryTurnSummary[] = [
+  {
+    turnId: 7,
+    changes: [{ path: 'src/app.ts', status: 'modified', additions: 12, deletions: 3 }],
+  },
+  {
+    turnId: 6,
+    changes: [
+      { path: 'src/app.ts', status: 'modified', additions: 4, deletions: 1 },
+      { path: 'src/legacy.ts', status: 'deleted', additions: 0, deletions: 90 },
+    ],
+  },
+];
+
+interface RestoreFixture {
+  readonly host: SlashCommandHost;
+  readonly restoreFiles: ReturnType<typeof vi.fn>;
+  readonly showStatus: ReturnType<typeof vi.fn>;
+  readonly showError: ReturnType<typeof vi.fn>;
+}
+
+function restoreHost(
+  overrides: {
+    turns?: readonly FileHistoryTurnSummary[];
+    result?: FileHistoryRestoreResult;
+    listFileChanges?: () => Promise<readonly FileHistoryTurnSummary[]>;
+    restoreFiles?: (
+      turnId: number,
+      options?: { readonly force: boolean },
+    ) => Promise<FileHistoryRestoreResult>;
+  } = {},
+): RestoreFixture {
+  const restoreFiles = vi.fn(
+    overrides.restoreFiles ??
+      (async (turnId: number): Promise<FileHistoryRestoreResult> =>
+        overrides.result ?? { turnId, files: [{ path: 'src/app.ts', state: 'restored' }] }),
+  );
+  const showStatus = vi.fn();
+  const showError = vi.fn();
+  const host = {
+    session: {
+      listFileChanges:
+        overrides.listFileChanges ?? (async () => overrides.turns ?? RESTORABLE_TURNS),
+      restoreFiles,
+    },
+    state: {
+      transcriptEntries: [],
+      transcriptContainer: { children: [], addChild: vi.fn() },
+      ui: { requestRender: vi.fn() },
+      appState: { streamingPhase: 'idle' },
+    },
+    showError,
+    showStatus,
+    mountEditorReplacement: vi.fn(),
+    restoreEditor: vi.fn(),
+  } as unknown as SlashCommandHost;
+  return { host, restoreFiles, showStatus, showError };
+}
+
+function mountedPicker(host: SlashCommandHost): { handleInput(data: string): void } {
+  const mount = host.mountEditorReplacement as ReturnType<typeof vi.fn>;
+  return mount.mock.calls.at(-1)?.[0] as { handleInput(data: string): void };
+}
+
+describe('/restore', () => {
+  it('restores the turn picked in the picker', async () => {
+    const { host, restoreFiles, showStatus } = restoreHost();
+
+    await handleRestoreCommand(host, '');
+    mountedPicker(host).handleInput(DOWN);
+    mountedPicker(host).handleInput(ENTER);
+
+    await vi.waitFor(() => {
+      expect(restoreFiles).toHaveBeenCalledWith(6, { force: false });
+    });
+    await vi.waitFor(() => {
+      expect(showStatus).toHaveBeenCalledWith(
+        expect.stringContaining('restored: src/app.ts'),
+        'success',
+      );
+    });
+  });
+
+  it('restores the cursor turn when the picker is confirmed as-is', async () => {
+    const { host, restoreFiles } = restoreHost();
+
+    await handleRestoreCommand(host, '');
+    mountedPicker(host).handleInput(ENTER);
+
+    await vi.waitFor(() => {
+      expect(restoreFiles).toHaveBeenCalledWith(7, { force: false });
+    });
+  });
+
+  it('restores nothing when the picker is cancelled', async () => {
+    const { host, restoreFiles, showStatus } = restoreHost();
+
+    await handleRestoreCommand(host, '');
+    mountedPicker(host).handleInput(ESCAPE);
+
+    expect(restoreFiles).not.toHaveBeenCalled();
+    expect(showStatus).not.toHaveBeenCalled();
+  });
+
+  it('reports every restore state, including conflicts, and how to force them', async () => {
+    const { host, showStatus } = restoreHost({
+      result: {
+        turnId: 7,
+        files: [
+          { path: 'src/app.ts', state: 'restored' },
+          { path: 'src/untouched.ts', state: 'unchanged' },
+          { path: 'src/drifted.ts', state: 'conflict', detail: 'changed since turn 7' },
+          { path: 'assets/logo.png', state: 'oversize' },
+          { path: 'src/gone.ts', state: 'unavailable', detail: 'no backup kept' },
+        ],
+      },
+    });
+
+    await handleRestoreCommand(host, '7');
+
+    const [message, tone] = showStatus.mock.calls[0] as [string, string];
+    expect(tone).toBe('warning');
+    expect(message).toContain('restored: src/app.ts');
+    expect(message).toContain('unchanged: src/untouched.ts');
+    expect(message).toContain('conflict: src/drifted.ts (changed since turn 7)');
+    expect(message).toContain('oversize: assets/logo.png');
+    expect(message).toContain('unavailable: src/gone.ts (no backup kept)');
+    expect(message).toContain('Re-run /restore 7 --force to overwrite the conflicts.');
+  });
+
+  it('drops the force hint once conflicts were forced through', async () => {
+    const { host, restoreFiles, showStatus } = restoreHost({
+      result: {
+        turnId: 7,
+        files: [{ path: 'src/drifted.ts', state: 'restored' }],
+      },
+    });
+
+    await handleRestoreCommand(host, '7 --force');
+
+    expect(restoreFiles).toHaveBeenCalledWith(7, { force: true });
+    expect(showStatus.mock.calls[0]?.[0]).not.toContain('--force');
+  });
+
+  it('says there is nothing to restore when no turn has recorded file history', async () => {
+    const { host, restoreFiles, showStatus, showError } = restoreHost({ turns: [] });
+
+    await handleRestoreCommand(host, '');
+
+    expect(showStatus).toHaveBeenCalledWith(expect.stringContaining('Nothing to restore'), 'warning');
+    expect(restoreFiles).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('refuses to restore while the agent is still streaming', async () => {
+    const { host, restoreFiles, showError } = restoreHost();
+    (host.state.appState as { streamingPhase: string }).streamingPhase = 'streaming';
+
+    await handleRestoreCommand(host, '7');
+
+    expect(restoreFiles).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(expect.stringContaining('Cannot restore files'));
+  });
+
+  it('refuses an unknown turn and names the restorable ones', async () => {
+    const { host, restoreFiles, showError } = restoreHost();
+
+    await handleRestoreCommand(host, '3');
+
+    expect(restoreFiles).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      'Turn 3 cannot be restored. Restorable turns: 7, 6.',
+    );
+  });
+
+  it('surfaces a failed history read instead of reporting a success', async () => {
+    const { host, restoreFiles, showError, showStatus } = restoreHost({
+      listFileChanges: async () => {
+        throw new Error('file_restore is disabled');
+      },
+    });
+
+    await handleRestoreCommand(host, '');
+
+    expect(restoreFiles).not.toHaveBeenCalled();
+    expect(showStatus).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      'Failed to read file history: file_restore is disabled',
+    );
+  });
+
+  it('surfaces a failed restore instead of reporting a success', async () => {
+    const { host, showError, showStatus } = restoreHost({
+      restoreFiles: async () => {
+        throw new Error('disk is full');
+      },
+    });
+
+    await handleRestoreCommand(host, '7');
+
+    expect(showStatus).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith('Failed to restore files: disk is full');
+  });
+
+  it('rejects unrecognized arguments with the usage line', async () => {
+    const { host, restoreFiles, showError } = restoreHost();
+
+    await handleRestoreCommand(host, '--dry-run 7');
+
+    expect(restoreFiles).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith('Usage: /restore [turn] [--force].');
   });
 });

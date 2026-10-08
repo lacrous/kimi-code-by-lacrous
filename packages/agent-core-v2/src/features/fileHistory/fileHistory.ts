@@ -39,6 +39,33 @@ export interface FileHistoryContent {
   readonly binary?: boolean;
 }
 
+export type FileHistoryRestoreState =
+  | 'restored'
+  | 'unchanged'
+  | 'conflict'
+  | 'oversize'
+  | 'unavailable';
+
+export interface FileHistoryRestoreOutcome {
+  readonly path: string;
+  readonly state: FileHistoryRestoreState;
+  readonly detail?: string;
+}
+
+export interface FileHistoryRestoreResult {
+  readonly turnId: number;
+  readonly files: readonly FileHistoryRestoreOutcome[];
+}
+
+export interface FileHistoryRestoreOptions {
+  readonly force?: boolean;
+}
+
+export interface FileHistoryTurnSummary {
+  readonly turnId: number;
+  readonly changes: readonly FileHistoryChange[];
+}
+
 export interface IAgentFileHistoryService {
   readonly _serviceBrand: undefined;
 
@@ -52,6 +79,12 @@ export interface IAgentFileHistoryService {
     path: string,
     phase?: FileHistoryCheckpointPhase,
   ): Promise<FileHistoryContent | undefined>;
+  turns(): Promise<FileHistoryTurnSummary[]>;
+  restore(
+    turnId: number,
+    paths?: readonly string[],
+    options?: FileHistoryRestoreOptions,
+  ): Promise<FileHistoryRestoreResult>;
 }
 
 export const IAgentFileHistoryService: ServiceIdentifier<IAgentFileHistoryService> =

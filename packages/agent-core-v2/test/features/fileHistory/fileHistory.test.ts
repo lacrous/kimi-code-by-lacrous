@@ -17,7 +17,7 @@ import { USER_PROMPT_ORIGIN } from '#/agent/contextMemory/types';
 import { IEventBus, type ISessionEventBus } from '#/app/event/eventBus';
 import { EventBusService } from '#/app/event/eventBusService';
 import { IAgentFileHistoryService, type FileBackupEntry, type FileHistoryState } from '#/features/fileHistory/fileHistory';
-import { AgentFileHistoryService, countLineDiff } from '#/features/fileHistory/fileHistoryService';
+import { AgentFileHistoryService, countLineDiff, FILE_HISTORY_MAX_FILE_BYTES } from '#/features/fileHistory/fileHistoryService';
 import {
   displacedCheckpoints,
   fileHistoryKey,
@@ -61,6 +61,7 @@ describe('AgentFileHistoryService', () => {
   let blobs: IBlobStore;
   let scopeCtx: IAgentScopeContext;
   let files: Map<string, Uint8Array>;
+  let directories: Set<string>;
 
   beforeEach(() => {
     disposables = new DisposableStore();
@@ -83,6 +84,7 @@ describe('AgentFileHistoryService', () => {
     executorEvents = stubToolExecutorEvents();
     blobs = new BlobStoreService(new InMemoryStorageService());
     files = new Map();
+    directories = new Set([WORK_DIR]);
   });
 
   afterEach(() => {
@@ -106,13 +108,23 @@ describe('AgentFileHistoryService', () => {
     return createFakeHostFs({
       stat: async (path: string) => {
         const content = files.get(path);
-        if (content === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-        return { isFile: true, isDirectory: false, size: content.byteLength };
+        if (content !== undefined) return { isFile: true, isDirectory: false, size: content.byteLength };
+        if (directories.has(path)) return { isFile: false, isDirectory: true, size: 0 };
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       },
       readBytes: async (path: string) => {
         const content = files.get(path);
         if (content === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
         return content;
+      },
+      writeBytes: async (path: string, bytes: Uint8Array) => {
+        files.set(path, bytes);
+      },
+      remove: async (path: string) => {
+        files.delete(path);
+      },
+      mkdir: async (path: string) => {
+        directories.add(path);
       },
     });
   }
@@ -509,6 +521,214 @@ describe('AgentFileHistoryService', () => {
     await fireEdit(service, '/elsewhere/notes.md', 1);
 
     expect(service.history().tracked).toEqual(['/elsewhere/notes.md']);
+  });
+
+  describe('restore', () => {
+    function fileText(path: string): string | undefined {
+      const content = files.get(path);
+      return content === undefined ? undefined : decoder.decode(content);
+    }
+
+    async function editTurn(
+      service: AgentFileHistoryService,
+      path: string,
+      from: string,
+      to: string,
+      turnId: number,
+    ): Promise<void> {
+      setFile(path, from);
+      startTurn(turnId);
+      await fireEdit(service, path, turnId);
+      setFile(path, to);
+      endTurn(turnId);
+      await service.settled();
+    }
+
+    it('rewinds a file to its bytes at the start of the turn', async () => {
+      const service = createService();
+      await editTurn(service, '/ws/a.txt', 'original\n', 'edited\n', 1);
+
+      const result = await service.restore(1);
+
+      expect(result).toEqual({
+        turnId: 1,
+        files: [{ path: 'a.txt', state: 'restored', detail: '9 bytes' }],
+      });
+      expect(fileText('/ws/a.txt')).toBe('original\n');
+    });
+
+    it('brings back a file the turn deleted', async () => {
+      const service = createService();
+      setFile('/ws/gone.txt', 'temp\n');
+      startTurn(1);
+      await fireEdit(service, '/ws/gone.txt', 1);
+      files.delete('/ws/gone.txt');
+      endTurn(1);
+      await service.settled();
+
+      const result = await service.restore(1);
+
+      expect(result.files).toEqual([{ path: 'gone.txt', state: 'restored', detail: '5 bytes' }]);
+      expect(fileText('/ws/gone.txt')).toBe('temp\n');
+    });
+
+    it('removes a file the turn created', async () => {
+      const service = createService();
+      startTurn(1);
+      await fireEdit(service, '/ws/new.txt', 1);
+      setFile('/ws/new.txt', 'created\n');
+      endTurn(1);
+      await service.settled();
+
+      const result = await service.restore(1);
+
+      expect(result.files).toEqual([{ path: 'new.txt', state: 'restored', detail: 'deleted' }]);
+      expect(files.has('/ws/new.txt')).toBe(false);
+    });
+
+    it('reports an already-correct file as unchanged instead of rewriting it', async () => {
+      const service = createService();
+      await editTurn(service, '/ws/a.txt', 'original\n', 'edited\n', 1);
+
+      await service.restore(1);
+      const second = await service.restore(1);
+
+      expect(second.files).toEqual([{ path: 'a.txt', state: 'unchanged' }]);
+      expect(fileText('/ws/a.txt')).toBe('original\n');
+    });
+
+    it('refuses to overwrite a file that drifted after the turn and honours force', async () => {
+      const service = createService();
+      await editTurn(service, '/ws/a.txt', 'original\n', 'edited\n', 1);
+      setFile('/ws/a.txt', 'typed by the user\n');
+
+      const blocked = await service.restore(1);
+
+      expect(blocked.files).toEqual([
+        { path: 'a.txt', state: 'conflict', detail: 'changed after this turn ended' },
+      ]);
+      expect(fileText('/ws/a.txt')).toBe('typed by the user\n');
+
+      const forced = await service.restore(1, undefined, { force: true });
+
+      expect(forced.files[0]?.state).toBe('restored');
+      expect(fileText('/ws/a.txt')).toBe('original\n');
+    });
+
+    it('restores only the requested paths and reports the rest as untouched', async () => {
+      const service = createService();
+      setFile('/ws/a.txt', 'a0\n');
+      setFile('/ws/b.txt', 'b0\n');
+      startTurn(1);
+      await fireEdit(service, '/ws/a.txt', 1);
+      await fireEdit(service, '/ws/b.txt', 1);
+      setFile('/ws/a.txt', 'a1\n');
+      setFile('/ws/b.txt', 'b1\n');
+      endTurn(1);
+      await service.settled();
+
+      const result = await service.restore(1, ['/ws/a.txt']);
+
+      expect(result.files).toEqual([{ path: 'a.txt', state: 'restored', detail: '3 bytes' }]);
+      expect(fileText('/ws/a.txt')).toBe('a0\n');
+      expect(fileText('/ws/b.txt')).toBe('b1\n');
+    });
+
+    it('declines to restore a file larger than the backup limit', async () => {
+      const service = createService();
+      await editTurn(
+        service,
+        '/ws/big.txt',
+        'a'.repeat(FILE_HISTORY_MAX_FILE_BYTES + 1),
+        'small\n',
+        1,
+      );
+
+      const result = await service.restore(1);
+
+      expect(result.files[0]?.state).toBe('oversize');
+      expect(result.files[0]?.detail).toContain(String(FILE_HISTORY_MAX_FILE_BYTES));
+      expect(files.get('/ws/big.txt')?.byteLength).toBe(6);
+    });
+
+    it('reports a path the turn never captured instead of silently skipping it', async () => {
+      const service = createService();
+      await editTurn(service, '/ws/a.txt', 'original\n', 'edited\n', 1);
+
+      const result = await service.restore(1, ['/ws/untouched.txt']);
+
+      expect(result.files).toEqual([
+        { path: 'untouched.txt', state: 'unavailable', detail: 'not captured in this turn' },
+      ]);
+    });
+
+    it('reports a turn outside the window as having no recorded history', async () => {
+      const service = createService();
+      await editTurn(service, '/ws/a.txt', 'original\n', 'edited\n', 1);
+
+      const result = await service.restore(99, ['/ws/a.txt']);
+
+      expect(result.files).toEqual([
+        { path: 'a.txt', state: 'unavailable', detail: 'turn 99 has no recorded file history' },
+      ]);
+    });
+
+    it('records the restore itself so it can be rewound again', async () => {
+      const service = createService();
+      await editTurn(service, '/ws/a.txt', 'original\n', 'edited\n', 1);
+      setFile('/ws/a.txt', 'typed by the user\n');
+
+      startTurn(2);
+      await service.restore(1, ['/ws/a.txt'], { force: true });
+      endTurn(2);
+      await service.settled();
+      expect(fileText('/ws/a.txt')).toBe('original\n');
+
+      await service.restore(2);
+
+      expect(fileText('/ws/a.txt')).toBe('typed by the user\n');
+    });
+  });
+
+  describe('turns', () => {
+    async function turn(service: AgentFileHistoryService, path: string, turnId: number): Promise<void> {
+      setFile(path, `v${String(turnId)}-before\n`);
+      startTurn(turnId);
+      await fireEdit(service, path, turnId);
+      setFile(path, `v${String(turnId)}-after\n`);
+      endTurn(turnId);
+      await service.settled();
+    }
+
+    it('lists restorable turns newest first with their changes', async () => {
+      const service = createService();
+      await turn(service, '/ws/a.txt', 1);
+      await turn(service, '/ws/a.txt', 2);
+
+      const turns = await service.turns();
+
+      expect(turns.map((t) => t.turnId)).toEqual([2, 1]);
+      expect(turns[0]?.changes).toEqual([
+        { path: 'a.txt', status: 'modified', additions: 1, deletions: 1 },
+      ]);
+    });
+
+    it('exposes no turns before any file-changing turn has run', async () => {
+      const service = createService();
+      expect(await service.turns()).toEqual([]);
+    });
+
+    it('keeps only the turns inside the retention window', async () => {
+      const service = createService();
+      await turn(service, '/ws/a.txt', 1);
+      for (let id = 2; id <= 6; id += 1) {
+        await turn(service, `/ws/filler-${String(id)}.txt`, id);
+      }
+
+      const turns = await service.turns();
+
+      expect(turns.map((t) => t.turnId)).toEqual([6, 5, 4, 3, 2]);
+    });
   });
 });
 

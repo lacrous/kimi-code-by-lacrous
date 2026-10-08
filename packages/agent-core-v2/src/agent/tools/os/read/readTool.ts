@@ -28,6 +28,7 @@ import { literalRulePattern, matchesGlobRuleSubject, matchesPathRuleSubject } fr
 import { makeCarriageReturnsVisible, splitLinesKeepingTerminator, type LineEndingStyle } from '#/_base/text/line-endings';
 import { detectTextEncoding, type UtfTextEncoding } from '#/_base/text/encoding';
 import { renderPrompt } from '#/_base/utils/render-prompt';
+import { IFlagService } from '#/app/flag/flag';
 import {
   DEFAULT_MAX_CHARS,
   DEFAULT_MAX_CHARS_LIMIT,
@@ -38,6 +39,12 @@ import {
 } from './read';
 import { IAgentToolResultTruncationService } from '#/agent/toolResultTruncation/toolResultTruncation';
 import { READ_SECTION, type ReadConfig } from './configSection';
+import { DOCUMENT_EXTRACT_FLAG_ID } from './extract/flag';
+import {
+  DOCUMENT_EXTRACT_MAX_BYTES,
+  extractDocument,
+  extractableFormat,
+} from './extract/extract';
 import readDescriptionTemplate from './read.md?raw';
 
 interface LineEndingFlags {
@@ -160,6 +167,21 @@ function notReadableFileOutput(path: string): string {
   return `"${path}" is not readable as UTF-8 text. Only text files can be read.`;
 }
 
+function noDocumentTextOutput(path: string): string {
+  return (
+    `"${path}" is a document with no extractable text layer — it is most likely a scanned or ` +
+    'image-only file, or an encrypted PDF. Only text files can be read; use ReadMediaFile for ' +
+    'image files.'
+  );
+}
+
+function documentTooLargeOutput(path: string, size: number, limit: number): string {
+  return (
+    `"${path}" is too large to extract text from (${String(size)} bytes > ${String(limit)}). ` +
+    'Extract the text first (e.g. with `pdftotext`) and read the result.'
+  );
+}
+
 function notUtf8DecodableFileOutput(path: string): string {
   return (
     `"${path}" is not valid UTF-8 or UTF-16 text. ` +
@@ -188,6 +210,7 @@ export class ReadTool implements IReadTool {
     @IAgentProfileService private readonly profile: IAgentProfileService,
     @IAgentToolPolicyService private readonly toolPolicy: IAgentToolPolicyService,
     @IAgentToolRegistryService private readonly toolRegistry: IAgentToolRegistryService,
+    @IFlagService private readonly flags: IFlagService,
     @ISessionMediaStore private readonly attachmentStore?: ISessionMediaStore,
   ) {}
 
@@ -310,7 +333,23 @@ export class ReadTool implements IReadTool {
       let readLines: () => AsyncIterable<string>;
       let detectedEncoding: UtfTextEncoding | undefined;
       let lossyDecoding = false;
-      if (!detection.seemsBinary && detection.encoding !== 'utf-8') {
+      const documentFormat = this.flags.enabled(DOCUMENT_EXTRACT_FLAG_ID)
+        ? extractableFormat(source.name)
+        : undefined;
+      if (documentFormat !== undefined) {
+        if (stat.size > DOCUMENT_EXTRACT_MAX_BYTES) {
+          return {
+            isError: true,
+            output: documentTooLargeOutput(args.path, stat.size, DOCUMENT_EXTRACT_MAX_BYTES),
+          };
+        }
+        const extracted = await extractDocument(source.name, await source.readBytes());
+        if (extracted === undefined) {
+          return { isError: true, output: noDocumentTextOutput(args.path) };
+        }
+        const extractedLines = splitLinesKeepingTerminator(extracted.text);
+        readLines = () => decodedLines(extractedLines);
+      } else if (!detection.seemsBinary && detection.encoding !== 'utf-8') {
         if (stat.size > TRANSCODE_MAX_BYTES) {
           return {
             isError: true,

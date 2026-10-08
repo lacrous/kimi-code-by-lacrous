@@ -21,6 +21,11 @@ export {
   showPermissionPicker,
   showSettingsSelector,
 } from './config';
+export {
+  formatContextSize,
+  handleContextCommand,
+  parseContextSize,
+} from './context';
 export { handleSwarmCommand } from './swarm';
 export { handleTowerCommand } from './tower';
 export { handleFeedbackCommand, showMcpServers, showStatusReport, showUsage } from './info';
@@ -30,6 +35,7 @@ export { handleGoalCommand, parseGoalCommand, goalObjectiveLengthWarning } from 
 export { goalArgumentCompletions } from './registry';
 export { handleForkCommand, handleInitCommand, handleTitleCommand } from './session';
 export { handleUndoCommand } from './undo';
+export { handleRestoreCommand } from './restore';
 export { handleRemoteControlCommand, handleWebCommand } from './web';
 export {
   promptApiKey,

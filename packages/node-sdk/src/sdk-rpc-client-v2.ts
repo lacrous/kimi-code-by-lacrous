@@ -149,6 +149,7 @@ import {
   IAgentCronService,
   IAgentFullCompactionService,
   IAgentGoalService,
+  IAgentFileHistoryService,
   IAgentPluginService,
   IAgentLifecycleService,
   IAgentLoopService,
@@ -277,6 +278,8 @@ import type {
   CreateSessionOptions,
   ExportSessionInput,
   ExportSessionResult,
+  FileHistoryRestoreResult,
+  FileHistoryTurnSummary,
   FileMeta,
   ForkSessionInput,
   GenerateSessionTitleInput,
@@ -1979,6 +1982,35 @@ export class SDKRpcClientV2 extends SDKRpcClientBase {
   override async undoHistory(input: SessionIdRpcInput & { count: number }): Promise<void> {
     const agent = await this.agentScope(input.sessionId);
     await agent.accessor.get(IAgentConversationUndoService).undo(input.count);
+  }
+
+  /**
+   * Turn-level file history lives on the main agent's `IAgentFileHistoryService`,
+   * so both actions resolve that agent explicitly instead of the interactive
+   * scope: a subagent's own handle carries no file history, and the history a
+   * user wants to rewind is always the main agent's.
+   */
+  private async mainAgentFileHistory(sessionId: string): Promise<IAgentFileHistoryService> {
+    const session = this.requireLiveSession(sessionId);
+    const context = await ensureMainAgent(session);
+    const main = session.accessor.get(IAgentLifecycleService).handleOf(context.agentId);
+    if (main === undefined) {
+      throw new KimiError(ErrorCodes.AGENT_NOT_FOUND, 'Main agent was not found');
+    }
+    return main.accessor.get(IAgentFileHistoryService);
+  }
+
+  override async listFileChanges(
+    input: SessionIdRpcInput,
+  ): Promise<readonly FileHistoryTurnSummary[]> {
+    return (await this.mainAgentFileHistory(input.sessionId)).turns();
+  }
+
+  override async restoreFiles(
+    input: SessionIdRpcInput & { turnId: number; paths?: readonly string[]; force?: boolean },
+  ): Promise<FileHistoryRestoreResult> {
+    const history = await this.mainAgentFileHistory(input.sessionId);
+    return history.restore(input.turnId, input.paths, { force: input.force ?? false });
   }
 
   /**

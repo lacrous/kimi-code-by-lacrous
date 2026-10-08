@@ -231,6 +231,14 @@ export const BUILTIN_SLASH_COMMANDS = [
     availability: 'always',
   },
   {
+    name: 'context',
+    aliases: ['ctx'],
+    description: 'Set how much context a model may fill',
+    argumentHint: '[model] [tokens|reset]',
+    priority: 95,
+    availability: 'always',
+  },
+  {
     name: 'btw',
     aliases: [],
     description: 'Ask a forked side agent a question',
@@ -377,6 +385,15 @@ export const BUILTIN_SLASH_COMMANDS = [
     description: 'Withdraw the last prompt from the transcript',
     priority: 80,
     availability: 'idle-only',
+  },
+  {
+    name: 'restore',
+    aliases: [],
+    description: 'Rewind files to how they were at the start of an earlier turn',
+    argumentHint: '[turn] [--force]',
+    priority: 80,
+    availability: 'idle-only',
+    experimentalFlag: 'file_restore',
   },
   {
     name: 'editor',

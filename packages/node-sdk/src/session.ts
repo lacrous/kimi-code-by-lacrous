@@ -14,6 +14,8 @@ import type {
   CapabilityStatus,
   CompactOptions,
   CreateGoalInput,
+  FileHistoryRestoreResult,
+  FileHistoryTurnSummary,
   GetCronTasksResult,
   GoalSnapshot,
   GoalToolResult,
@@ -30,6 +32,7 @@ import type {
   ReloadSummary,
   ResumedSessionState,
   ResumedSessionSummary,
+  RestoreFilesOptions,
   SessionPlan,
   SessionStatus,
   SessionSummary,
@@ -382,6 +385,26 @@ export class Session {
   async undoHistory(count: number = 1): Promise<void> {
     this.ensureOpen();
     await this.rpc.undoHistory({ sessionId: this.id, count });
+  }
+
+  /** Turns whose file changes can still be rewound, newest first. */
+  async listFileChanges(): Promise<readonly FileHistoryTurnSummary[]> {
+    this.ensureOpen();
+    return this.rpc.listFileChanges({ sessionId: this.id });
+  }
+
+  /** Rewind files to how they were at the start of `turnId`. */
+  async restoreFiles(
+    turnId: number,
+    options?: RestoreFilesOptions,
+  ): Promise<FileHistoryRestoreResult> {
+    this.ensureOpen();
+    return this.rpc.restoreFiles({
+      sessionId: this.id,
+      turnId,
+      paths: options?.paths,
+      force: options?.force,
+    });
   }
 
   async getTodos(): Promise<readonly SessionTodoItem[]> {

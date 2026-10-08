@@ -38,3 +38,34 @@ export const fileHistoryContentResponseSchema = z.object({
   content: fileHistoryContentEntrySchema.nullable(),
 });
 export type FileHistoryContentResponse = z.infer<typeof fileHistoryContentResponseSchema>;
+
+export const fileHistoryTurnSummarySchema = z.object({
+  turnId: z.number(),
+  changes: z.array(fileHistoryChangeSchema),
+});
+export type WireFileHistoryTurnSummary = z.infer<typeof fileHistoryTurnSummarySchema>;
+
+export const fileHistoryTurnsResponseSchema = z.object({
+  turns: z.array(fileHistoryTurnSummarySchema),
+});
+export type FileHistoryTurnsResponse = z.infer<typeof fileHistoryTurnsResponseSchema>;
+
+export const fileHistoryRestoreRequestSchema = z.object({
+  turn_id: z.number().int().nonnegative(),
+  paths: z.array(z.string().min(1)).optional(),
+  force: z.boolean().optional(),
+});
+export type FileHistoryRestoreRequest = z.infer<typeof fileHistoryRestoreRequestSchema>;
+
+export const fileHistoryRestoreOutcomeSchema = z.object({
+  path: z.string(),
+  state: z.enum(['restored', 'unchanged', 'conflict', 'oversize', 'unavailable']),
+  detail: z.string().optional(),
+});
+export type WireFileHistoryRestoreOutcome = z.infer<typeof fileHistoryRestoreOutcomeSchema>;
+
+export const fileHistoryRestoreResponseSchema = z.object({
+  turnId: z.number(),
+  files: z.array(fileHistoryRestoreOutcomeSchema),
+});
+export type FileHistoryRestoreResponse = z.infer<typeof fileHistoryRestoreResponseSchema>;

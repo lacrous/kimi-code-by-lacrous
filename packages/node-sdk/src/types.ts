@@ -189,6 +189,24 @@ export interface SuggestFilesResult {
 /** Metadata of one upload in the engine's daemon file store. */
 export type { FileMeta } from '@moonshot-ai/agent-core-v2/app/file/fileService';
 
+/** Turn-level file history, as kept by the engine's per-turn backup checkpoints. */
+export type {
+  FileHistoryChange,
+  FileHistoryChangeStatus,
+  FileHistoryRestoreOutcome,
+  FileHistoryRestoreResult,
+  FileHistoryRestoreState,
+  FileHistoryTurnSummary,
+} from '@moonshot-ai/agent-core-v2/features/fileHistory/fileHistory';
+
+/** Input for `restoreFiles`: which of the turn's files to rewind, and whether to overwrite drift. */
+export interface RestoreFilesOptions {
+  /** Restrict the restore to these paths. Defaults to every file the turn changed. */
+  readonly paths?: readonly string[];
+  /** Overwrite files that drifted since the turn instead of reporting them as conflicts. */
+  readonly force?: boolean;
+}
+
 /** Input for `uploadFile`: the upload's display name and MIME type. */
 export interface UploadFileOptions {
   readonly name: string;

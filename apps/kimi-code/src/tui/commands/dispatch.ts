@@ -41,6 +41,7 @@ import {
   showPermissionPicker,
   showSettingsSelector,
 } from './config';
+import { handleContextCommand } from './context';
 import { handleGoalCommand } from './goal';
 import { handleFeedbackCommand, showMcpServers, showStatusReport, showUsage } from './info';
 import { handleAddDirCommand } from './add-dir';
@@ -53,6 +54,7 @@ import {
   type BuiltinSlashCommandName,
 } from './registry';
 import { handleReloadCommand, handleReloadTuiCommand } from './reload';
+import { handleRestoreCommand } from './restore';
 import type { SkillListSession } from './skills';
 import {
   canRestoreSubmittedInput,
@@ -530,6 +532,9 @@ async function handleBuiltInSlashCommand(
     case 'provider':
       await handleProviderCommand(host);
       return;
+    case 'context':
+      await handleContextCommand(host, args);
+      return;
     case 'permission':
       showPermissionPicker(host);
       return;
@@ -595,6 +600,9 @@ async function handleBuiltInSlashCommand(
       return;
     case 'undo':
       await handleUndoCommand(host, args);
+      return;
+    case 'restore':
+      await handleRestoreCommand(host, args);
       return;
     case 'web':
       await handleWebCommand(host);

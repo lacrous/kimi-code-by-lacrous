@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isAbsolute, relative, resolve } from 'pathe';
+import { dirname, isAbsolute, relative, resolve } from 'pathe';
 
 import { Service } from '#/_base/di/service';
 import { unwrapErrorCause } from '#/_base/errors/errors';
@@ -29,7 +29,11 @@ import {
   type FileHistoryCheckpointPhase,
   type FileHistoryCheckpointRecord,
   type FileHistoryContent,
+  type FileHistoryRestoreOptions,
+  type FileHistoryRestoreOutcome,
+  type FileHistoryRestoreResult,
   type FileHistoryState,
+  type FileHistoryTurnSummary,
 } from './fileHistory';
 import {
   displacedCheckpoints,
@@ -250,6 +254,209 @@ export class AgentFileHistoryService extends Service implements IAgentFileHistor
     return { version: entry.version, content };
   }
 
+  turns(): Promise<FileHistoryTurnSummary[]> {
+    return this.enqueueValue(() => this.readTurns());
+  }
+
+  private async readTurns(): Promise<FileHistoryTurnSummary[]> {
+    const state = this.history();
+    const summaries: FileHistoryTurnSummary[] = [];
+    for (const index of this.restorableIndexes(state)) {
+      const turnId = state.checkpoints[index]!.turnId;
+      summaries.push({ turnId, changes: await this.readChanges(turnId) });
+    }
+    return summaries;
+  }
+
+  restore(
+    turnId: number,
+    paths?: readonly string[],
+    options?: FileHistoryRestoreOptions,
+  ): Promise<FileHistoryRestoreResult> {
+    return this.enqueueValue(() =>
+      this.runRestore(turnId, paths ?? [], options?.force ?? false),
+    );
+  }
+
+  private async runRestore(
+    turnId: number,
+    paths: readonly string[],
+    force: boolean,
+  ): Promise<FileHistoryRestoreResult> {
+    const state = this.history();
+    const start = state.checkpoints.find(
+      (c) => c.turnId === turnId && checkpointPhaseOf(c) === 'start',
+    );
+    const end = state.checkpoints.find(
+      (c) => c.turnId === turnId && checkpointPhaseOf(c) === 'end',
+    );
+    const restorable = start !== undefined && (end !== undefined || this.isLive(state, start));
+    const requested = paths.map((path) => this.pathKey(path));
+    const targets =
+      requested.length > 0
+        ? [...new Set(requested)]
+        : restorable && start !== undefined
+          ? Object.keys(start.entries)
+          : [];
+    if (!restorable || start === undefined) {
+      return {
+        turnId,
+        files: targets.map((path) => ({
+          path,
+          state: 'unavailable' as const,
+          detail: `turn ${String(turnId)} has no recorded file history`,
+        })),
+      };
+    }
+
+    const lease = this.runtime.acquire(['fs']);
+    try {
+      const fs = lease.runtime.fs;
+      const files: FileHistoryRestoreOutcome[] = [];
+      for (const pathKey of targets) {
+        if (fs === undefined) {
+          files.push({ path: pathKey, state: 'unavailable', detail: 'no filesystem available' });
+          continue;
+        }
+        files.push(
+          await this.restorePath(fs, start, end, pathKey, force).catch((error: unknown) => ({
+            path: pathKey,
+            state: 'unavailable' as const,
+            detail: error instanceof Error ? error.message : String(error),
+          })),
+        );
+      }
+      return { turnId, files };
+    } finally {
+      lease.dispose();
+    }
+  }
+
+  private async restorePath(
+    fs: IHostFileSystem,
+    start: FileHistoryCheckpointRecord,
+    end: FileHistoryCheckpointRecord | undefined,
+    pathKey: string,
+    force: boolean,
+  ): Promise<FileHistoryRestoreOutcome> {
+    const before = Object.hasOwn(start.entries, pathKey) ? start.entries[pathKey] : undefined;
+    if (before === undefined) {
+      return { path: pathKey, state: 'unavailable', detail: 'not captured in this turn' };
+    }
+    if (before.oversize === true) {
+      return {
+        path: pathKey,
+        state: 'oversize',
+        detail: `larger than the ${String(FILE_HISTORY_MAX_FILE_BYTES)}-byte backup limit at the start of the turn`,
+      };
+    }
+
+    const absolute = this.absolutePath(pathKey);
+    const current = await this.readCurrent(pathKey);
+    if (before.key === null) {
+      if (current === 'missing') return { path: pathKey, state: 'unchanged', detail: 'already gone' };
+      await this.recordForActiveTurn(pathKey);
+      await fs.remove(absolute);
+      return { path: pathKey, state: 'restored', detail: 'deleted' };
+    }
+
+    const backup = await this.entryBytes(before);
+    if (backup === undefined) {
+      return {
+        path: pathKey,
+        state: 'unavailable',
+        detail: 'the backup copy is no longer stored',
+      };
+    }
+    if (current instanceof Uint8Array && bytesEqual(current, backup)) {
+      return { path: pathKey, state: 'unchanged' };
+    }
+    if (current === 'unreadable') {
+      return { path: pathKey, state: 'conflict', detail: 'the current path is not a readable file' };
+    }
+    if (end !== undefined && !force) {
+      const reason = await this.driftReason(end, before, pathKey, current);
+      if (reason !== undefined) {
+        return { path: pathKey, state: 'conflict', detail: reason };
+      }
+    }
+    await this.recordForActiveTurn(pathKey);
+    await this.ensureParent(fs, absolute);
+    await fs.writeBytes(absolute, backup);
+    return { path: pathKey, state: 'restored', detail: `${String(backup.byteLength)} bytes` };
+  }
+
+  private async recordForActiveTurn(pathKey: string): Promise<void> {
+    const turnId = this.activeTurnId;
+    if (turnId === undefined) return;
+    await this.capture(pathKey, turnId);
+  }
+
+  private async driftReason(
+    end: FileHistoryCheckpointRecord,
+    before: FileBackupEntry,
+    pathKey: string,
+    current: CurrentState,
+  ): Promise<string | undefined> {
+    const entry = end.entries[pathKey] ?? before;
+    if (entry.oversize === true) {
+      const sameOversize =
+        !(current instanceof Uint8Array) &&
+        current !== 'missing' &&
+        current !== 'unreadable' &&
+        current.oversizeBytes === entry.size &&
+        current.mtimeMs === entry.mtimeMs;
+      return sameOversize ? undefined : 'changed after this turn ended';
+    }
+    if (entry.key === null) return current === 'missing' ? undefined : 'changed after this turn ended';
+    if (!(current instanceof Uint8Array)) return 'changed after this turn ended';
+    const bytes = await this.entryBytes(entry);
+    if (bytes === undefined) return 'the end-of-turn copy is no longer stored';
+    return bytesEqual(current, bytes) ? undefined : 'changed after this turn ended';
+  }
+
+  private restorableIndexes(state: FileHistoryState): number[] {
+    const indexes: number[] = [];
+    for (let index = state.checkpoints.length - 1; index >= 0; index -= 1) {
+      const record = state.checkpoints[index]!;
+      if (checkpointPhaseOf(record) !== 'start') continue;
+      const ended = state.checkpoints.some(
+        (c) => c.turnId === record.turnId && checkpointPhaseOf(c) === 'end',
+      );
+      if (ended || this.isLive(state, record, index)) indexes.push(index);
+    }
+    return indexes;
+  }
+
+  private isLive(
+    state: FileHistoryState,
+    record: FileHistoryCheckpointRecord,
+    index?: number,
+  ): boolean {
+    return (
+      this.activeTurnId === record.turnId &&
+      (index ?? state.checkpoints.indexOf(record)) === state.checkpoints.length - 1
+    );
+  }
+
+  private absolutePath(pathKey: string): string {
+    return isAbsolute(pathKey) ? pathKey : resolve(this.workspaceCtx.workDir, pathKey);
+  }
+
+  private async ensureParent(fs: IHostFileSystem, absolute: string): Promise<void> {
+    const parent = dirname(absolute);
+    try {
+      const stat = await fs.stat(parent);
+      if (!stat.isDirectory) {
+        throw new Error(`Parent path is not a directory: ${parent}`);
+      }
+      return;
+    } catch (error) {
+      if ((unwrapErrorCause(error) as { code?: unknown } | null)?.code !== 'ENOENT') throw error;
+    }
+    await fs.mkdir(parent, { recursive: true });
+  }
+
   private onWillExecuteTool(event: WillExecuteToolEvent): void {
     const path = editTargetPath(event.execution.display);
     if (path === undefined) return;
@@ -458,12 +665,8 @@ export class AgentFileHistoryService extends Service implements IAgentFileHistor
     return this.blobs.get(this.agentCtx.scope(), entry.key);
   }
 
-  private async readCurrent(
-    pathKey: string,
-  ): Promise<
-    Uint8Array | 'missing' | 'unreadable' | { oversizeBytes: number; mtimeMs?: number }
-  > {
-    const absolute = isAbsolute(pathKey) ? pathKey : resolve(this.workspaceCtx.workDir, pathKey);
+  private async readCurrent(pathKey: string): Promise<CurrentState> {
+    const absolute = this.absolutePath(pathKey);
     const lease = this.runtime.acquire(['fs']);
     try {
       const fs = lease.runtime.fs;
@@ -521,6 +724,12 @@ export class AgentFileHistoryService extends Service implements IAgentFileHistor
 function isWindowsPath(value: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(value) || /^[\\/]{2}[^\\/]+[\\/][^\\/]+/.test(value);
 }
+
+type CurrentState =
+  | Uint8Array
+  | 'missing'
+  | 'unreadable'
+  | { oversizeBytes: number; mtimeMs?: number };
 
 function editTargetPath(display: ToolInputDisplay | undefined): string | undefined {
   if (display === undefined || display.kind !== 'file_io') return undefined;

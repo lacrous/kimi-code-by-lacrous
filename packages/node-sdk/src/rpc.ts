@@ -32,6 +32,8 @@ import type {
   ExportSessionInput,
   ExportSessionResult,
   CreateGoalInput,
+  FileHistoryRestoreResult,
+  FileHistoryTurnSummary,
   FileMeta,
   ForkSessionInput,
   GenerateSessionTitleInput,
@@ -381,6 +383,16 @@ export abstract class SDKRpcClientBase {
   abstract getTodos(input: SessionIdRpcInput): Promise<readonly SessionTodoItem[]>;
 
   abstract undoHistory(input: SessionIdRpcInput & { count: number }): Promise<void>;
+
+  abstract listFileChanges(input: SessionIdRpcInput): Promise<readonly FileHistoryTurnSummary[]>;
+
+  abstract restoreFiles(
+    input: SessionIdRpcInput & {
+      turnId: number;
+      paths?: readonly string[];
+      force?: boolean;
+    },
+  ): Promise<FileHistoryRestoreResult>;
 
   abstract getContext(input: SessionIdRpcInput): Promise<AgentContextData>;
 

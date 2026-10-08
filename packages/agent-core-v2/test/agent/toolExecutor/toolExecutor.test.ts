@@ -54,6 +54,7 @@ import { FakeRuntime } from '#/runtime/fakeRuntime';
 import type { IAgentRuntimeService } from '#/agent/runtimeBinding/agentRuntime';
 import type { ISessionSkillCatalog } from '#/features/skill/session/skillCatalog';
 import { stubWorkspaceContext } from '../../session/workspaceContext/stub-workspace-context';
+import { stubFlag } from '../../app/flag/stubs';
 import { ConfigRegistry, ConfigService } from '#/app/config/configService';
 import { IConfigRegistry, IConfigService } from '#/app/config/config';
 import { IAtomicTomlDocumentStore } from '#/persistence/interface/atomicDocumentStore';
@@ -1116,6 +1117,7 @@ describe('truncation pipeline', () => {
       } as unknown as IAgentProfileService,
       { isToolActive: () => true } as unknown as IAgentToolPolicyService,
       { resolve: () => ({}) } as unknown as IAgentToolRegistryService,
+      stubFlag(false),
       attachmentStore,
     ));
     registry.register(new GlobTool(binding, stubWorkspaceContext(homeDir), noopTelemetryService));

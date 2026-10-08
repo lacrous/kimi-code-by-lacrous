@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { type RunningServer, startServer } from '../src/start';
 import { TEST_HOST_IDENTITY } from './helpers/hostIdentity';
@@ -123,5 +123,92 @@ describe('file history routes', () => {
     });
     const envelope = res.json() as Envelope;
     expect(envelope.code).not.toBe(0);
+  });
+});
+
+const FILE_RESTORE_ENV = 'KIMI_CODE_EXPERIMENTAL_FILE_RESTORE';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe('file history turn listing and restore', () => {
+  it('refuses both actions while the file_restore flag is off', async () => {
+    vi.stubEnv(FILE_RESTORE_ENV, undefined);
+    const r = await boot();
+    const sessionId = await createSession(r);
+
+    const turns = await appOf(r).inject({
+      method: 'GET',
+      url: `/api/v1/sessions/${sessionId}/file-history/turns`,
+    });
+    const turnsEnvelope = turns.json() as Envelope;
+    expect(turnsEnvelope.code).toBe(40925);
+    expect(turnsEnvelope.data).toBeNull();
+    expect(turnsEnvelope.msg).toContain(FILE_RESTORE_ENV);
+
+    const restore = await appOf(r).inject({
+      method: 'POST',
+      url: `/api/v1/sessions/${sessionId}/file-history/restore`,
+      payload: { turn_id: 1 },
+      headers: { 'content-type': 'application/json' },
+    });
+    const restoreEnvelope = restore.json() as Envelope;
+    expect(restoreEnvelope.code).toBe(40925);
+    expect(restoreEnvelope.data).toBeNull();
+    expect(restoreEnvelope.msg).toContain(FILE_RESTORE_ENV);
+  });
+
+  it('reports an empty turn list for a live session without history', async () => {
+    vi.stubEnv(FILE_RESTORE_ENV, '1');
+    const r = await boot();
+    const sessionId = await createSession(r);
+
+    const res = await appOf(r).inject({
+      method: 'GET',
+      url: `/api/v1/sessions/${sessionId}/file-history/turns`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Envelope<{ turns: unknown[] }>).data).toEqual({ turns: [] });
+  });
+
+  it('marks every requested file unavailable when the turn has no history', async () => {
+    vi.stubEnv(FILE_RESTORE_ENV, '1');
+    const r = await boot();
+    const sessionId = await createSession(r);
+
+    const res = await appOf(r).inject({
+      method: 'POST',
+      url: `/api/v1/sessions/${sessionId}/file-history/restore`,
+      payload: { turn_id: 1, paths: ['a.txt', 'b.txt'] },
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Envelope<{ turnId: number; files: unknown[] }>).data).toEqual({
+      turnId: 1,
+      files: [
+        { path: 'a.txt', state: 'unavailable', detail: 'turn 1 has no recorded file history' },
+        { path: 'b.txt', state: 'unavailable', detail: 'turn 1 has no recorded file history' },
+      ],
+    });
+  });
+
+  it('rejects a session that is not live before checking the flag', async () => {
+    vi.stubEnv(FILE_RESTORE_ENV, '1');
+    const r = await boot();
+
+    const turns = await appOf(r).inject({
+      method: 'GET',
+      url: '/api/v1/sessions/does-not-exist/file-history/turns',
+    });
+    expect((turns.json() as Envelope).code).toBe(40401);
+
+    const restore = await appOf(r).inject({
+      method: 'POST',
+      url: '/api/v1/sessions/does-not-exist/file-history/restore',
+      payload: { turn_id: 1 },
+      headers: { 'content-type': 'application/json' },
+    });
+    expect((restore.json() as Envelope).code).toBe(40401);
   });
 });

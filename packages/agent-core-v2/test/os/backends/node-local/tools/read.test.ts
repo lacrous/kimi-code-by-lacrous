@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ZipFile } from 'yazl';
 
 import { PathSecurityError } from '#/tool/path-access';
 import { MEDIA_SNIFF_BYTES } from '#/agent/media/file-type';
@@ -11,6 +12,7 @@ import {
   TRANSCODE_MAX_BYTES,
 } from '#/agent/tools/os/read/read';
 import { ReadTool } from '#/agent/tools/os/read/readTool';
+import { DOCUMENT_EXTRACT_MAX_BYTES } from '#/agent/tools/os/read/extract/extract';
 import { renderToolResultForModel } from '#/agent/contextMemory/toolResultRender';
 import { stubToolResultTruncationService } from '../../../../agent/toolResultTruncation/stubs';
 import { stubConfigService } from '../../../../app/config/stubs';
@@ -23,6 +25,8 @@ import { FakeRuntime } from '#/runtime/fakeRuntime';
 import { RuntimeRegistry } from '#/runtime/runtimeRegistry';
 import type { IHostEnvironment } from '#/os/interface/hostEnvironment';
 import type { ExecutableToolContext, ExecutableToolResult, ToolExecution } from '#/tool/toolContract';
+import type { IFlagService } from '#/app/flag/flag';
+import { stubFlag } from '../../../../app/flag/stubs';
 
 const signal = new AbortController().signal;
 const PERMISSIVE_WORKSPACE = stubWorkspaceContext('/');
@@ -88,6 +92,7 @@ function createReadTool(
   profile: IAgentProfileService = stubProfileService({ image_in: true, video_in: true }),
   toolPolicy: IAgentToolPolicyService = { isToolActive: () => true } as unknown as IAgentToolPolicyService,
   toolRegistry: IAgentToolRegistryService = { resolve: () => ({}) } as unknown as IAgentToolRegistryService,
+  flags: IFlagService = stubFlag(false),
 ): ReadTool {
   const runtime = Object.assign(
     new FakeRuntime(
@@ -103,7 +108,7 @@ function createReadTool(
     inspect: () => runtime,
     acquire: () => ({ runtime, track: (resource) => resource, dispose: () => {} }),
   };
-  return new ReadTool(resolver, workspace, skillCatalog, truncation, stubConfigService(), profile, toolPolicy, toolRegistry);
+  return new ReadTool(resolver, workspace, skillCatalog, truncation, stubConfigService(), profile, toolPolicy, toolRegistry, flags);
 }
 
 function createSpiedFs(content: string) {
@@ -1488,6 +1493,7 @@ describe('ReadTool', () => {
       stubProfileService({ image_in: true, video_in: true }),
       { isToolActive: () => true } as unknown as IAgentToolPolicyService,
       { resolve: () => ({}) } as unknown as IAgentToolRegistryService,
+      stubFlag(false),
     );
     const execution = await tool.resolveExecution({ path: '/workspace/a.txt' });
     expect('execute' in execution).toBe(true);
@@ -1498,5 +1504,123 @@ describe('ReadTool', () => {
     await expect(
       execution.execute({ turnId: 0, toolCallId: 'call_read_late', signal }),
     ).rejects.toMatchObject({ code: 'runtime.unavailable' });
+  });
+
+  describe('document extraction', () => {
+    function textPdf(lines: readonly string[]): Buffer {
+      const body = [
+        'BT',
+        '/F1 12 Tf',
+        '72 720 Td',
+        ...lines.map((line, index) => `(${line}) Tj${index < lines.length - 1 ? ' T*' : ''}`),
+        'ET',
+      ].join('\n');
+      const parts: string[] = ['%PDF-1.7\n'];
+      parts.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+      parts.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+      parts.push(
+        '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>\nendobj\n',
+      );
+      parts.push(`4 0 obj\n<< /Length ${String(body.length)} >>\nstream\n${body}\nendstream\nendobj\n`);
+      parts.push('trailer\n<< /Size 5 /Root 1 0 R >>\n%%EOF\n');
+      return Buffer.from(parts.join(''), 'latin1');
+    }
+
+    function zipDocument(files: Record<string, string>): Promise<Buffer> {
+      return new Promise((resolve, reject) => {
+        const zip = new ZipFile();
+        for (const [name, content] of Object.entries(files)) {
+          zip.addBuffer(Buffer.from(content, 'utf8'), name);
+        }
+        zip.end();
+        const chunks: Buffer[] = [];
+        zip.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        zip.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+        zip.outputStream.on('error', reject);
+      });
+    }
+
+    function documentTool(path: string, file: FakeFile, enabled: boolean): ReadTool {
+      const fs = createSpiedMapFs({ [path]: file }).fs;
+      return createReadTool(fs, createTestEnv(), PERMISSIVE_WORKSPACE, undefined, undefined, undefined, undefined, undefined, stubFlag(enabled));
+    }
+
+    it('still refuses documents while the flag is off', async () => {
+      const tool = documentTool('/tmp/report.pdf', { bytes: textPdf(['First line', 'Second line']) }, false);
+
+      const result = await execute(tool, ReadInputSchema.parse({ path: '/tmp/report.pdf' }));
+
+      expect(result.isError).toBe(true);
+      expect(result.output).toBe(
+        '"/tmp/report.pdf" is not readable as UTF-8 text. Only text files can be read.',
+      );
+    });
+
+    it('returns the extracted text with line numbers when the flag is on', async () => {
+      const tool = documentTool('/tmp/report.pdf', { bytes: textPdf(['First line', 'Second line']) }, true);
+
+      const result = await execute(tool, ReadInputSchema.parse({ path: '/tmp/report.pdf' }));
+
+      expect(result.isError).not.toBe(true);
+      expect(result.output).toBe('1\tFirst line\n2\tSecond line');
+      expect(result.note).toContain('2 lines read from file starting from line 1.');
+      expect(result.note).toContain('End of file reached.');
+    });
+
+    it('pages through the extracted text with line_offset and n_lines', async () => {
+      const tool = documentTool('/tmp/report.pdf', { bytes: textPdf(['One', 'Two', 'Three', 'Four']) }, true);
+
+      const result = await execute(
+        tool,
+        ReadInputSchema.parse({ path: '/tmp/report.pdf', line_offset: 2, n_lines: 2 }),
+      );
+
+      expect(result.isError).not.toBe(true);
+      expect(result.output).toBe('2\tTwo\n3\tThree');
+      expect(result.note).toContain('2 lines read from file starting from line 2.');
+      expect(result.note).toContain('Total lines in file: 4.');
+    });
+
+    it('names the scanned-document case instead of returning an empty file', async () => {
+      const tool = documentTool('/tmp/scan.pdf', { bytes: textPdf([]) }, true);
+
+      const result = await execute(tool, ReadInputSchema.parse({ path: '/tmp/scan.pdf' }));
+
+      expect(result.isError).toBe(true);
+      expect(result.output).toBe(
+        '"/tmp/scan.pdf" is a document with no extractable text layer — it is most likely a scanned ' +
+          'or image-only file, or an encrypted PDF. Only text files can be read; use ReadMediaFile ' +
+          'for image files.',
+      );
+    });
+
+    it('refuses a document larger than the extraction limit', async () => {
+      const tool = documentTool(
+        '/tmp/huge.pdf',
+        { bytes: textPdf(['x']), size: DOCUMENT_EXTRACT_MAX_BYTES + 1 },
+        true,
+      );
+
+      const result = await execute(tool, ReadInputSchema.parse({ path: '/tmp/huge.pdf' }));
+
+      expect(result.isError).toBe(true);
+      expect(result.output).toContain('is too large to extract text from');
+    });
+
+    it('extracts an epub whose extension the classifier does not list as binary', async () => {
+      const bytes = await zipDocument({
+        'META-INF/container.xml':
+          '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>',
+        'OEBPS/content.opf':
+          '<package><manifest><item href="chapter1.xhtml" media-type="application/xhtml+xml"/></manifest></package>',
+        'OEBPS/chapter1.xhtml': '<html><body><h1>Chapter</h1><p>Once upon a time</p></body></html>',
+      });
+      const tool = documentTool('/tmp/novel.epub', { bytes }, true);
+
+      const result = await execute(tool, ReadInputSchema.parse({ path: '/tmp/novel.epub' }));
+
+      expect(result.isError).not.toBe(true);
+      expect(result.output).toBe('1\t## 1\n2\tChapter\n3\tOnce upon a time');
+    });
   });
 });
