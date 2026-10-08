@@ -1,5 +1,25 @@
 # @lacrous/kimi-code
 
+## 3.1.0
+
+### Minor Changes
+
+- Rename the product to Lacrous Kimi Code in the CLI, TUI, VS Code extension, and web UI.
+
+- Add a way to activate a platform you already configured from `/provider`: highlight it and press Enter to open its models and pick one.
+
+- Add a `/context` command for setting the context window of a model, accepting token counts such as `200000`, `200k` or `1M`.
+
+- Extract text from PDF, Word, Excel, PowerPoint and RTF documents when reading a file. Set `KIMI_CODE_EXPERIMENTAL_DOCUMENT_EXTRACT=1` to enable it.
+
+- Add the `/restore` slash command to rewind files to how they were at the start of an earlier turn. Set `KIMI_CODE_EXPERIMENTAL_FILE_RESTORE=1` to enable it, and pass `--force` to also overwrite files that changed since that turn.
+
+- Add a `SearchSessions` tool that finds earlier turns across this machine's sessions, behind the `session_search` experimental flag.
+
+### Patch Changes
+
+- Re-adding a platform you already configured now warns that the saved API key will be replaced.
+
 ## 3.0.0
 
 ### Major Changes
