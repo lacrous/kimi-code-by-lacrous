@@ -1,5 +1,11 @@
 # @lacrous/kimi-code
 
+## 3.2.0
+
+### Minor Changes
+
+- Stop sending `prompt_cache_key` to OpenAI-compatible gateways that reject it: the CLI retries once without it and remembers the rejection for the session. Set `prompt_cache_key = false` under a model's entry in `config.toml` to turn it off from the start.
+
 ## 3.1.0
 
 ### Minor Changes
