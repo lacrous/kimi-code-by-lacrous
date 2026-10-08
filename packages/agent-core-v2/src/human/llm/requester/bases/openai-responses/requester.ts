@@ -7,7 +7,11 @@ import { toLlmSyntaxErrorMessage } from '#/llm/syntax-errors';
 import type { ProtocolBase, ProtocolRequesterOptions, TraitContext } from '#/llm/protocol/base';
 import { resolveModelConnection } from '#/llm/protocol/connection';
 import { applyThinking } from '#/llm/protocol/thinking';
-import { resolveMaxCompletionCap, type FormatRequestInput } from '#/llm/protocol/format';
+import {
+  resolveMaxCompletionCap,
+  type FormatRequestInput,
+  type StreamParseSink,
+} from '#/llm/protocol/format';
 import { encodeReasoningEffortFallback } from '#/llm/thinking';
 import {
   mergeRequestHeaders,
@@ -148,24 +152,24 @@ async function executeOpenAIResponsesRequest(
             return hooked !== undefined ? parseOpenAIResponsesUsage(hooked) : defaultUsage;
           },
   });
-  let messageId: string | undefined;
+  const streamState: { messageId?: string; failed: boolean } = { failed: false };
+  const sink: StreamParseSink = {
+    onDelta: (part) => onEvent?.({ type: 'llm.streaming.part', part }),
+    onFinish: (finish) => onEvent?.({ type: 'llm.streaming.finish', finish }),
+    onMessageId: (id) => {
+      if (id === streamState.messageId) return;
+      streamState.messageId = id;
+      onEvent?.({ type: 'llm.streaming.message_id', messageId: id });
+    },
+    onUsage: (usage) => onEvent?.({ type: 'llm.streaming.usage', usage }),
+    onError: (message) => {
+      streamState.failed = true;
+      onEvent?.({ type: 'llm.failed.remote', error: message });
+    },
+  };
   for await (const chunk of stream) {
-    let failed = false;
-    parse(chunk, {
-      onDelta: (part) => onEvent?.({ type: 'llm.streaming.part', part }),
-      onFinish: (finish) => onEvent?.({ type: 'llm.streaming.finish', finish }),
-      onMessageId: (id) => {
-        if (id === messageId) return;
-        messageId = id;
-        onEvent?.({ type: 'llm.streaming.message_id', messageId: id });
-      },
-      onUsage: (usage) => onEvent?.({ type: 'llm.streaming.usage', usage }),
-      onError: (message) => {
-        failed = true;
-        onEvent?.({ type: 'llm.failed.remote', error: message });
-      },
-    });
-    if (failed) {
+    parse(chunk, sink);
+    if (streamState.failed) {
       return;
     }
   }
