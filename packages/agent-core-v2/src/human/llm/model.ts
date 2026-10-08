@@ -14,6 +14,7 @@ export interface LlmModel extends LlmConnection {
   readonly capability: ModelCapability;
   readonly maxContextSize?: number;
   readonly maxInputSize?: number;
+  readonly promptCacheKey?: boolean;
 }
 
 export function modelKey(model: LlmModel): string {

@@ -43,6 +43,7 @@ import {
   type OpenAIRequestParams,
 } from './format';
 import { DEFAULT_REASONING_KEY, ReasoningKeyDialect } from './reasoning-key';
+import { isPromptCacheKeyRejection, PromptCacheKeyRejections } from './prompt-cache-key-fallback';
 
 const OPENAI_CHAT_TOOL_CALL_ID_POLICY: ToolCallIdPolicy = {
   normalize: (id) => sanitizeToolCallId(id, 64),
@@ -74,7 +75,7 @@ export function prepareOpenAIRequest(
   const trait = options?.trait;
   const ctx: TraitContext = { model: input.model };
   let kwargs: Record<string, unknown> = {};
-  if (input.cacheKey !== undefined) {
+  if (input.cacheKey !== undefined && input.model.promptCacheKey !== false) {
     kwargs = trait?.encodeCacheKey?.(input.cacheKey, ctx) ?? encodeOpenAICacheKey(input.cacheKey);
   }
   let preserveThinking = false;
@@ -206,6 +207,7 @@ export function createOpenAIRequester(options?: OpenAIRequesterOptions): LlmRequ
     options?.clientFactory ??
     ((request: LlmClientContext) => createClient(request.model, request.headers));
   const reasoningByModel = new Map<string, ReasoningKeyDialect>();
+  const promptCacheKeyRejections = new PromptCacheKeyRejections();
   const reasoningFor = (ctx: TraitContext): ReasoningKeyDialect => {
     const key = modelKey(ctx.model);
     let reasoning = reasoningByModel.get(key);
@@ -234,6 +236,7 @@ export function createOpenAIRequester(options?: OpenAIRequesterOptions): LlmRequ
         request = prepareOpenAIRequest(
           {
             ...config,
+            cacheKey: promptCacheKeyRejections.has(modelKey(model)) ? undefined : config.cacheKey,
             model,
             messages: normalizeToolCallIdsForProvider(messages, policy),
             tools,
@@ -245,22 +248,37 @@ export function createOpenAIRequester(options?: OpenAIRequesterOptions): LlmRequ
         onEvent?.({ type: 'llm.failed.syntax', error: toLlmSyntaxErrorMessage(error) });
         return;
       }
+      const transport: OpenAITransport = {
+        connection,
+        trait,
+        ctx,
+        format,
+        reasoning,
+        resolveClient,
+        signal,
+        onEvent,
+      };
+      const key = modelKey(model);
       try {
-        await executeOpenAIRequest(request, {
-          connection,
-          trait,
-          ctx,
-          format,
-          reasoning,
-          resolveClient,
-          signal,
-          onEvent,
-        });
+        await executeOpenAIRequest(request, transport);
       } catch (error) {
-        onEvent?.({
-          type: 'llm.failed.remote',
-          error: convertOpenAIError(error, (e) => classifyError?.(e)),
-        });
+        if (request.params.prompt_cache_key === undefined || !isPromptCacheKeyRejection(error)) {
+          onEvent?.({
+            type: 'llm.failed.remote',
+            error: convertOpenAIError(error, (e) => classifyError?.(e)),
+          });
+          return;
+        }
+        promptCacheKeyRejections.mark(key);
+        const { prompt_cache_key: _rejected, ...withoutCacheKey } = request.params;
+        try {
+          await executeOpenAIRequest({ ...request, params: withoutCacheKey }, transport);
+        } catch (retryError) {
+          onEvent?.({
+            type: 'llm.failed.remote',
+            error: convertOpenAIError(retryError, (e) => classifyError?.(e)),
+          });
+        }
       }
     },
   };

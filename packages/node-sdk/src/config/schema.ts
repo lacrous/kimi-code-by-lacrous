@@ -82,6 +82,7 @@ const ModelAliasBaseSchema = z.object({
   offEffort: z.string().optional(),
   betaApi: z.boolean().optional(),
   baseUrl: z.string().optional(),
+  promptCacheKey: z.boolean().optional(),
 });
 
 export const ModelAliasOverrideSchema = ModelAliasBaseSchema.omit({

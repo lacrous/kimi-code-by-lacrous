@@ -288,6 +288,7 @@ merge_all_available_skills = true
   # support_efforts: string[]
   # default_effort: string
   # off_effort: string
+  # prompt_cache_key: boolean
   # overrides: object
     # max_context_size: integer
     # max_input_size: integer
@@ -299,6 +300,7 @@ merge_all_available_skills = true
     # support_efforts: string[]
     # default_effort: string
     # off_effort: string
+    # prompt_cache_key: boolean
 
 # ##########################################################################
 # permission

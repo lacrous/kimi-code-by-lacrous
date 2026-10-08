@@ -24,6 +24,7 @@ export interface CatalogModelOverrides {
   readonly defaultEffort?: string;
   readonly offEffort?: string;
   readonly alwaysThinking?: boolean;
+  readonly promptCacheKey?: boolean;
 }
 
 export interface CatalogModelDefinition extends LlmModel {
@@ -36,6 +37,7 @@ export interface CatalogModelDefinition extends LlmModel {
   readonly protocol?: ProtocolName;
   readonly defaultEffort?: string;
   readonly adaptiveThinking?: boolean;
+  readonly promptCacheKey?: boolean;
   readonly name?: string;
   readonly aliases?: readonly string[];
   readonly oauth?: CatalogOAuthRef;
@@ -643,6 +645,7 @@ function mergeModel(
     protocol: record.protocol,
     defaultEffort: record.defaultEffort,
     adaptiveThinking: record.adaptiveThinking,
+    promptCacheKey: record.promptCacheKey,
     betaApi: record.betaApi,
     vertexai: record.vertexai,
     name: record.name,

@@ -79,6 +79,7 @@ export function toCatalogModelDefinition(
     protocol: record.protocol,
     defaultEffort: record.defaultEffort,
     adaptiveThinking: record.adaptiveThinking,
+    promptCacheKey: record.promptCacheKey,
     betaApi: record.betaApi,
     name: record.name,
     aliases: record.aliases,
@@ -102,6 +103,7 @@ function toCatalogOverrides(overrides: ModelOverride | undefined): CatalogModelO
   if (overrides.supportEfforts !== undefined) out.supportEfforts = overrides.supportEfforts;
   if (overrides.defaultEffort !== undefined) out.defaultEffort = overrides.defaultEffort;
   if (overrides.offEffort !== undefined) out.offEffort = overrides.offEffort;
+  if (overrides.promptCacheKey !== undefined) out.promptCacheKey = overrides.promptCacheKey;
   if (overrides.capabilities !== undefined) {
     out.capability = capabilityFromDeclared(overrides.capabilities);
     out.alwaysThinking = declaresAlwaysThinking(overrides.capabilities);

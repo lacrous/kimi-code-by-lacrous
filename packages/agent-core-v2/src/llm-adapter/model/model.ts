@@ -15,6 +15,7 @@ export interface ModelOverride {
   supportEfforts?: string[];
   defaultEffort?: string;
   offEffort?: string;
+  promptCacheKey?: boolean;
 }
 
 export interface ModelRecord {
@@ -42,6 +43,7 @@ export interface ModelRecord {
   supportEfforts?: string[];
   defaultEffort?: string;
   offEffort?: string;
+  promptCacheKey?: boolean;
 
   overrides?: ModelOverride;
 

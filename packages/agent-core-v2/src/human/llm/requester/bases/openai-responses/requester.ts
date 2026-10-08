@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { assign, shake } from 'radashi';
 
 import { headersToRecord } from '#/llm/errors';
-import type { LlmModel } from '#/llm/model';
+import { modelKey, type LlmModel } from '#/llm/model';
 import { toLlmSyntaxErrorMessage } from '#/llm/syntax-errors';
 import type { ProtocolBase, ProtocolRequesterOptions, TraitContext } from '#/llm/protocol/base';
 import { resolveModelConnection } from '#/llm/protocol/connection';
@@ -26,6 +26,7 @@ import {
   sanitizeOpenAIResponsesCallId,
 } from '../tool-call-id';
 import { convertOpenAIError } from '../openai/format';
+import { isPromptCacheKeyRejection, PromptCacheKeyRejections } from '../openai/prompt-cache-key-fallback';
 import { getOpenAIResponsesModelCapability } from './capability';
 import type { OpenAIResponsesRawChunk } from './contract';
 import type { OpenAIResponsesTrait } from './trait';
@@ -72,7 +73,7 @@ export function prepareOpenAIResponsesRequest(
   const trait = options?.trait;
   const ctx: TraitContext = { model: input.model };
   let kwargs: Record<string, unknown> = {};
-  if (input.cacheKey !== undefined) {
+  if (input.cacheKey !== undefined && input.model.promptCacheKey !== false) {
     kwargs =
       trait?.encodeCacheKey?.(input.cacheKey, ctx) ?? encodeOpenAIResponsesCacheKey(input.cacheKey);
   }
@@ -178,6 +179,7 @@ export function createOpenAIResponsesRequester(
   const trait = options?.trait;
   const classifyError = options?.classifyError;
   const format = createOpenAIResponsesFormat();
+  const promptCacheKeyRejections = new PromptCacheKeyRejections();
   const resolveClient =
     options?.clientFactory ??
     ((request: LlmClientContext) => createClient(request.model, request.headers));
@@ -198,6 +200,7 @@ export function createOpenAIResponsesRequester(
         request = prepareOpenAIResponsesRequest(
           {
             ...config,
+            cacheKey: promptCacheKeyRejections.has(modelKey(model)) ? undefined : config.cacheKey,
             model,
             messages: normalizeToolCallIdsForProvider(messages, policy),
             tools,
@@ -209,21 +212,35 @@ export function createOpenAIResponsesRequester(
         onEvent?.({ type: 'llm.failed.syntax', error: toLlmSyntaxErrorMessage(error) });
         return;
       }
+      const transport: OpenAIResponsesTransport = {
+        connection,
+        trait,
+        ctx,
+        format,
+        resolveClient,
+        signal,
+        onEvent,
+      };
       try {
-        await executeOpenAIResponsesRequest(request, {
-          connection,
-          trait,
-          ctx,
-          format,
-          resolveClient,
-          signal,
-          onEvent,
-        });
+        await executeOpenAIResponsesRequest(request, transport);
       } catch (error) {
-        onEvent?.({
-          type: 'llm.failed.remote',
-          error: convertOpenAIError(error, (e) => classifyError?.(e)),
-        });
+        if (request.params.prompt_cache_key === undefined || !isPromptCacheKeyRejection(error)) {
+          onEvent?.({
+            type: 'llm.failed.remote',
+            error: convertOpenAIError(error, (e) => classifyError?.(e)),
+          });
+          return;
+        }
+        promptCacheKeyRejections.mark(modelKey(model));
+        const { prompt_cache_key: _rejected, ...withoutCacheKey } = request.params;
+        try {
+          await executeOpenAIResponsesRequest({ ...request, params: withoutCacheKey }, transport);
+        } catch (retryError) {
+          onEvent?.({
+            type: 'llm.failed.remote',
+            error: convertOpenAIError(retryError, (e) => classifyError?.(e)),
+          });
+        }
       }
     },
   };

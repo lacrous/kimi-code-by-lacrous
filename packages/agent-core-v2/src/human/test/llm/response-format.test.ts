@@ -1,3 +1,4 @@
+import { APIError } from 'openai';
 import { describe, expect, it } from 'vitest';
 
 import { UNKNOWN_CAPABILITY } from '#/llm/capability';
@@ -328,5 +329,39 @@ describe('requester toolMessageConversion', () => {
       inputItems.find((item) => item['type'] === 'function_call_output')?.['output'],
     ).toBe(expectedText);
     expect(JSON.stringify(inputItems)).not.toContain('input_image');
+  });
+
+  it('retries a Responses request once without prompt_cache_key after a rejection', async () => {
+    const rejection = 'Unsupported parameter(s): `prompt_cache_key`';
+    const captured: Record<string, unknown>[] = [];
+    const requester = createOpenAIResponsesRequester({
+      clientFactory: () =>
+        ({
+          responses: {
+            create: (params: Record<string, unknown>) => {
+              captured.push(params);
+              if (captured.length === 1) {
+                return {
+                  withResponse: async () => {
+                    throw new APIError(400, { message: rejection }, rejection, undefined);
+                  },
+                };
+              }
+              return withResponseStream(responsesStreamEvents);
+            },
+          },
+        }) as never,
+    });
+    const events: string[] = [];
+    await requester.generate(
+      { model, cacheKey: 'session-1' },
+      { messages },
+      { signal: new AbortController().signal, onEvent: (e) => events.push(e.type) },
+    );
+    expect(captured).toHaveLength(2);
+    expect(captured[0]?.['prompt_cache_key']).toBe('session-1');
+    expect(captured[1]?.['prompt_cache_key']).toBeUndefined();
+    expect(events).toContain('llm.done');
+    expect(events).not.toContain('llm.failed.remote');
   });
 });

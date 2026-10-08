@@ -18,6 +18,7 @@ export interface ProtocolProviderOptions {
   readonly supportEfforts?: readonly string[];
   readonly offEffort?: string;
   readonly adaptiveThinking?: boolean;
+  readonly promptCacheKey?: boolean;
   readonly betaApi?: boolean;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly vertexai?: boolean;

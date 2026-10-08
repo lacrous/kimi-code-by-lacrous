@@ -542,6 +542,7 @@ function effectiveRecordOf(definition: CatalogModel): ModelRecord {
       definition.supportEfforts === undefined ? undefined : [...definition.supportEfforts],
     defaultEffort: definition.defaultEffort,
     offEffort: definition.offEffort,
+    promptCacheKey: definition.promptCacheKey,
   };
 }
 
@@ -564,6 +565,7 @@ function buildProtocolProviderOptions(
       const reasoningKey = nonEmpty(model.reasoningKey);
       if (reasoningKey !== undefined) options.reasoningKey = reasoningKey;
       if (model.offEffort !== undefined) options.offEffort = model.offEffort;
+      if (model.promptCacheKey !== undefined) options.promptCacheKey = model.promptCacheKey;
       break;
     }
     case 'google-genai': {
@@ -578,6 +580,7 @@ function buildProtocolProviderOptions(
     }
     case 'openai_responses':
       if (model.offEffort !== undefined) options.offEffort = model.offEffort;
+      if (model.promptCacheKey !== undefined) options.promptCacheKey = model.promptCacheKey;
       break;
     default: {
       const exhaustive: never = protocol;

@@ -49,6 +49,7 @@ const modelBaseSchema = z.object({
   betaApi: z.boolean().optional(),
   supportEfforts: z.array(z.string()).optional(),
   defaultEffort: z.string().optional(),
+  promptCacheKey: z.boolean().optional(),
 });
 
 const modelOverrideSchema = modelBaseSchema
