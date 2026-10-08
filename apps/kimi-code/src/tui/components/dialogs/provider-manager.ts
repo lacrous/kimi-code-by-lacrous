@@ -13,7 +13,8 @@
  * Keyboard:
  *   - ↑ / ↓             move highlight
  *   - ← / → · PgUp/PgDn page
- *   - Enter             on `[ Add New Platform ]` → `onAdd()`
+ *   - Enter             on a source row → `onSelectSource(providerIds, label)`
+ *                         on `[ Add New Platform ]` → `onAdd()`
  *   - D                 delete with inline `[y/N]` confirmation
  *                         on a source row → `onDeleteSource(providerIds)`
  *                         on `[ Add New Platform ]` → ignored
@@ -61,6 +62,11 @@ export interface ProviderManagerOptions {
   /** Provider id of the currently active model. */
   readonly activeProviderId?: string;
   readonly onAdd: () => void;
+  /** Activate a configured platform. Passed the full provider-id list so the
+   *  host can scope the model picker to every provider the row groups
+   *  (a custom-registry fetch contributes several), plus the row label so
+   *  the host can name the platform in its messages. */
+  readonly onSelectSource: (providerIds: readonly string[], label: string) => void;
   /** Delete all providers under a source (Open Platform / custom-registry
    *  fetch / standalone). Passed the full provider-id list so the host
    *  doesn't have to re-derive the source grouping. */
@@ -91,7 +97,7 @@ type Row = SourceRow | AddRow;
 
 const ADD_ROW_LABEL = '[ Add New Platform ]';
 const PAGE_SIZE = 8;
-const HEADER_HINT = '↑↓ navigate · D delete · Esc cancel';
+const HEADER_HINT = '↑↓ navigate · Enter select · D delete · Esc cancel';
 
 // Narrows a `ProviderConfig` blob to a `CustomRegistrySource` payload.
 // Mirrors `readCustomRegistrySource` in `kimi-tui.ts`. We can't import
@@ -306,9 +312,12 @@ export class ProviderManagerComponent extends Container implements Focusable {
 
     if (matchesKey(data, Key.enter)) {
       const selected = rows[this.selectedIndex];
-      if (selected?.kind === 'add') {
+      if (selected === undefined) return;
+      if (selected.kind === 'add') {
         this.opts.onAdd();
+        return;
       }
+      this.opts.onSelectSource(selected.providerIds, selected.label);
       return;
     }
 

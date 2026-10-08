@@ -16,6 +16,8 @@ const BOLD = '[1m';
 const ESC = String.fromCodePoint(27);
 
 const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, 'g');
+const ENTER = '\r';
+const DOWN = `${ESC}[B`;
 
 function rendered(component: ProviderManagerComponent, width = 120): string {
   return component.render(width).join('\n').replaceAll(SGR, '');
@@ -25,6 +27,7 @@ function makeComponent(overrides: Partial<ProviderManagerOptions> = {}): Provide
   return new ProviderManagerComponent({
     providers: {} as Record<string, ProviderConfig>,
     onAdd: vi.fn(),
+    onSelectSource: vi.fn(),
     onDeleteSource: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
@@ -121,6 +124,59 @@ describe('ProviderManagerComponent', () => {
     expect(rendered(component)).toContain('[y/N]');
     component.handleInput('y');
     expect(onDeleteSource).toHaveBeenCalledWith(['acme']);
+  });
+
+  it('selects the highlighted provider on Enter', () => {
+    const onSelectSource = vi.fn();
+    const onAdd = vi.fn();
+    const component = makeComponent({
+      providers: {
+        acme: { baseUrl: 'https://acme.test' },
+      } as unknown as Record<string, ProviderConfig>,
+      activeProviderId: 'acme',
+      onSelectSource,
+      onAdd,
+    });
+    component.handleInput(ENTER);
+    expect(onSelectSource).toHaveBeenCalledWith(['acme'], 'acme');
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it('passes every provider of a grouped custom-registry row to onSelectSource', () => {
+    // One row covers the whole `{url, apiKey}` source, so the picker must be
+    // scoped to all of its providers, not just the first.
+    const source = { kind: 'apiJson', url: 'https://reg.test/api.json', apiKey: 'k' };
+    const onSelectSource = vi.fn();
+    const component = makeComponent({
+      providers: {
+        'reg-one': { baseUrl: 'https://reg.test/v1', source },
+        'reg-two': { baseUrl: 'https://reg.test/v2', source },
+      } as unknown as Record<string, ProviderConfig>,
+      onSelectSource,
+    });
+    expect(rendered(component)).not.toContain('reg-one');
+    component.handleInput(ENTER);
+    expect(onSelectSource).toHaveBeenCalledWith(
+      ['reg-one', 'reg-two'],
+      'reg.test/api.json',
+    );
+  });
+
+  it('still opens the add flow when Enter lands on [ Add New Platform ]', () => {
+    const onAdd = vi.fn();
+    const onSelectSource = vi.fn();
+    const component = makeComponent({
+      providers: {
+        acme: { baseUrl: 'https://acme.test' },
+      } as unknown as Record<string, ProviderConfig>,
+      activeProviderId: 'acme',
+      onAdd,
+      onSelectSource,
+    });
+    component.handleInput(DOWN);
+    component.handleInput(ENTER);
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(onSelectSource).not.toHaveBeenCalled();
   });
 
   it('closes on Esc', () => {

@@ -69,6 +69,9 @@ function buildProviderManagerOptions(host: SlashCommandHost): ProviderManagerOpt
         host.showError(`Add provider failed: ${formatErrorMessage(error)}`);
       });
     },
+    onSelectSource: (providerIds, label) => {
+      handleProviderSelectSource(host, providerIds, label);
+    },
     onDeleteSource: (providerIds) => {
       void handleProviderManagerDeleteSource(host, providerIds).catch((error: unknown) => {
         host.showError(`Remove provider failed: ${formatErrorMessage(error)}`);
@@ -78,6 +81,62 @@ function buildProviderManagerOptions(host: SlashCommandHost): ProviderManagerOpt
       host.restoreEditor();
     },
   };
+}
+
+/**
+ * Activates a configured platform from the provider list.
+ *
+ * A platform is only "active" through the model bound to it, so this opens the
+ * shared model picker scoped to that platform's tab instead of flipping a
+ * separate switch — picking a model is what persists the switch.
+ */
+function handleProviderSelectSource(
+  host: SlashCommandHost,
+  providerIds: readonly string[],
+  label: string,
+): void {
+  const ids = new Set(providerIds);
+  // Group on `model.provider`, not the alias prefix: a custom-registry row can
+  // hold several providers, and the v1 `__secondary__` derived entry carries a
+  // provider id of its own, so it drops out here for free.
+  const aliases = Object.entries(host.state.appState.availableModels)
+    .filter(([, model]) => ids.has(model.provider))
+    .map(([alias]) => alias);
+
+  if (aliases.length === 0) {
+    host.showError(
+      `${label} has no models yet. Re-add it to fetch its model list, or declare one under [models."${providerIds[0] ?? label}/…"] in config.toml.`,
+    );
+    reopenProviderManager(host);
+    return;
+  }
+
+  const initialTabId = providerIds.find((id) =>
+    aliases.some((alias) => host.state.appState.availableModels[alias]?.provider === id),
+  );
+
+  // Every provider's models stay in the dict so `Tab` can still reach the
+  // others — the scope is which tab opens, not what is reachable.
+  const models = { ...host.state.appState.availableModels };
+  delete models[SECONDARY_DERIVED_MODEL_ALIAS];
+
+  const selector = new TabbedModelSelectorComponent({
+    models,
+    currentValue: host.state.appState.model,
+    selectedValue: aliases[0],
+    currentThinkingEffort: host.state.appState.thinkingEffort,
+    initialTabId,
+    onSelect: ({ alias, thinking }) => {
+      host.restoreEditor();
+      void setDefaultModel(host, alias, thinking).catch((error: unknown) => {
+        host.showError(`Set default model failed: ${formatErrorMessage(error)}`);
+      });
+    },
+    onCancel: () => {
+      host.restoreEditor();
+    },
+  });
+  host.mountEditorReplacement(selector);
 }
 
 async function handleProviderManagerDeleteSource(
@@ -450,13 +509,24 @@ async function handleCatalogProviderAdd(host: SlashCommandHost): Promise<void> {
   }
   const { wire, baseUrl } = resolution;
 
-  const apiKey = await promptApiKey(host, entry.name ?? providerId);
+  // Read the existing record before prompting: the catalog path replaces the
+  // provider wholesale, so a key already saved here would otherwise be dropped
+  // without the user being told.
+  const existingConfig = await host.harness.getConfig();
+  const alreadyConfigured = existingConfig.providers[providerId] !== undefined;
+
+  const apiKey = await promptApiKey(
+    host,
+    entry.name ?? providerId,
+    alreadyConfigured
+      ? [`Replaces the key currently saved for "${providerId}".`]
+      : undefined,
+  );
   if (apiKey === undefined) return;
 
   // Persist the provider and all its models immediately after the api key is
   // entered. The model selector that follows is just a convenience to pick the
   // default model; ESC leaves the provider in place without a default selection.
-  const existingConfig = await host.harness.getConfig();
   if (existingConfig.providers[providerId] !== undefined) {
     await host.harness.removeProvider(providerId);
   }
