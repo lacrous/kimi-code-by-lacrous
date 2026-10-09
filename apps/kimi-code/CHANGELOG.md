@@ -1,5 +1,13 @@
 # @lacrous/kimi-code
 
+## 3.3.0
+
+### Minor Changes
+
+- [`fad7f00`](https://github.com/lacrous/kimi-code-by-lacrous/commit/fad7f00408c8a263a4de581e5f647883b664bc97) Thanks [@lacrous](https://github.com/lacrous)! - Add a Custom endpoint option to the provider picker: paste a base URL and an API key, and the provider is added with the models the endpoint offers.
+
+- [`ebf5cec`](https://github.com/lacrous/kimi-code-by-lacrous/commit/ebf5cecb88ac1c90e55616858201affd5b2763e4) Thanks [@lacrous](https://github.com/lacrous)! - Add a per-provider auth scheme for OpenAI-compatible endpoints: send the key in a header you name, or send no credential at all for local servers. Set `[providers.<id>.auth_scheme]` with `kind = "custom-header"` and `header = "x-api-key"`, or with `kind = "none"`.
+
 ## 3.2.0
 
 ### Minor Changes

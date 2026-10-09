@@ -1,5 +1,27 @@
 # @moonshot-ai/agent-core-v2
 
+## 0.5.0
+
+### Minor Changes
+
+- [`633582a`](https://github.com/lacrous/kimi-code-by-lacrous/commit/633582a4d0b7be6d5b8fb073f31b2bdc269a006a) Thanks [@lacrous](https://github.com/lacrous)! - Add DOM-mode browser control: a `BrowserController` that addresses elements by role, name, node id or text rather than pixel coordinates, and a Chrome DevTools Protocol backend that needs no new dependency.
+
+- [`dbdb596`](https://github.com/lacrous/kimi-code-by-lacrous/commit/dbdb596551efe520ee71d9978004b1de05282d6f) Thanks [@lacrous](https://github.com/lacrous)! - Add an owned-browser launcher that starts Chromium with a disposable profile directory, so a run cannot reach the user's browser session and a crashed browser can be replaced.
+
+- [`c821edf`](https://github.com/lacrous/kimi-code-by-lacrous/commit/c821edfa0a5076e51ced02f73933e9ee3291cbb4) Thanks [@lacrous](https://github.com/lacrous)! - Add a completion gate that refuses a completion claim the machine can disprove, while letting through goals that are not machine-checkable so a subjective goal cannot deadlock a run.
+
+- [`db321f4`](https://github.com/lacrous/kimi-code-by-lacrous/commit/db321f41ab8e748ab0678db45a33868634b1c286) Thanks [@lacrous](https://github.com/lacrous)! - Add computer control behind the `KIMI_CODE_EXPERIMENTAL_COMPUTER_USE` flag: capture the screen, click, type, press keys and launch applications on the local desktop.
+
+- [`dbd2ccf`](https://github.com/lacrous/kimi-code-by-lacrous/commit/dbd2ccfa965879ca2d219a86b359fe25c39eb417) Thanks [@lacrous](https://github.com/lacrous)! - Verify a goal's completion before accepting it, behind the `KIMI_CODE_EXPERIMENTAL_GOAL_VERIFICATION` flag: an `UpdateGoal` claiming `complete` is checked against criteria the goal declares, and a claim the machine can disprove is refused so the model can fix it.
+
+- [`ca5dc5a`](https://github.com/lacrous/kimi-code-by-lacrous/commit/ca5dc5adbb2a40835adf5c5a10549eb6c2d8f795) Thanks [@lacrous](https://github.com/lacrous)! - Add goal verification: check a completion claim against recorded evidence and facts instead of taking the model's word for it. A claim the run cannot back is reported as unproven or contradicted.
+
+- [`2bf9e7c`](https://github.com/lacrous/kimi-code-by-lacrous/commit/2bf9e7c2cbfdc6c334d020c6e317f3c899385ba3) Thanks [@lacrous](https://github.com/lacrous)! - Add a run supervisor that decides whether an autonomous goal continues after each turn: it tracks actions across turns, checks a deadline, and notices when the same action has failed repeatedly.
+
+- [`025b44e`](https://github.com/lacrous/kimi-code-by-lacrous/commit/025b44efb848934549c292c31df45a5e14595db4) Thanks [@lacrous](https://github.com/lacrous)! - Add the layer that supervises an autonomous run between turns: decide whether to continue, complete, block or stop on deadline, budget, action limit or a repeating failure; classify which failures are worth retrying; and record every action to an append-only log.
+
+- [`ba7fb20`](https://github.com/lacrous/kimi-code-by-lacrous/commit/ba7fb207fad9d2604f907442d39107fa731c0413) Thanks [@lacrous](https://github.com/lacrous)! - Add screen capture that works on Ubuntu's default Wayland session: ask GNOME Shell for a frame over D-Bus first, and fall back to ImageMagick on X11.
+
 ## 0.4.3
 
 ### Patch Changes
