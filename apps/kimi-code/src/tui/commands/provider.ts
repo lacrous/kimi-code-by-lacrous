@@ -10,6 +10,7 @@ import {
   type Catalog,
   type KimiConfigPatch,
   type OAuthRef,
+  type ProviderConfig,
   type ThinkingEffort,
 } from '@moonshot-ai/kimi-code-sdk';
 
@@ -18,8 +19,12 @@ import { fetchCatalogOrBuiltIn } from '#/utils/catalog-fetch';
 import {
   BUILT_IN_PROVIDERS,
   getBuiltInProvider,
-  type BuiltInProvider,
 } from '#/utils/built-in-providers';
+import {
+  buildCustomProviderRecord,
+  deriveProviderId,
+  parseProviderBaseUrl,
+} from '#/utils/custom-provider';
 import { refreshAllProviderModels } from '../utils/refresh-providers';
 import type { RefreshProviderHost, RefreshResult } from '../utils/refresh-providers';
 import { refreshKimiRegion } from '#/utils/region';
@@ -29,6 +34,11 @@ import {
   type CustomRegistryImportResult,
   type CustomRegistryImportValue,
 } from '../components/dialogs/custom-registry-import';
+import {
+  CustomProviderDialogComponent,
+  type CustomProviderResult,
+  type CustomProviderValue,
+} from '../components/dialogs/custom-provider';
 import {
   ProviderManagerComponent,
   type ProviderManagerOptions,
@@ -189,6 +199,10 @@ async function handleProviderAdd(host: SlashCommandHost): Promise<void> {
     await handleCatalogProviderAdd(host);
     return;
   }
+  if (source === 'endpoint') {
+    await handleCustomEndpointAdd(host);
+    return;
+  }
   if (source !== 'custom') {
     await handleBuiltinProviderAdd(host, source);
     return;
@@ -197,6 +211,54 @@ async function handleProviderAdd(host: SlashCommandHost): Promise<void> {
   if (!handled) {
     reopenProviderManager(host);
   }
+}
+
+/**
+ * Configures a provider from the pasted base URL and optional key.
+ *
+ * This is the path for a server that is not in the built-in table and not in
+ * the models.dev catalog — a gateway, a proxy, or a model running on the user's
+ * own machine. Only the base URL is asked for; the wire defaults to
+ * OpenAI-compatible and the models are read from the endpoint's own `/models`
+ * route, so nothing has to be looked up anywhere.
+ */
+async function handleCustomEndpointAdd(host: SlashCommandHost): Promise<void> {
+  const value = await promptCustomProvider(host);
+  if (value === undefined) {
+    reopenProviderManager(host);
+    return;
+  }
+
+  // Re-check: the dialog validated before closing, but the record is written
+  // to config.toml and every later log line quotes it back.
+  const check = parseProviderBaseUrl(value.baseUrl);
+  if (!check.ok) {
+    host.showError(`Base URL ${check.reason}`);
+    reopenProviderManager(host);
+    return;
+  }
+
+  // The id is derived, never asked for: it must not collide with a configured
+  // provider or a built-in vendor, or the two records would overwrite each
+  // other in config.toml.
+  const providerId = deriveProviderId(check.baseUrl, [
+    ...Object.keys(host.state.appState.availableProviders),
+    ...BUILT_IN_PROVIDERS.map((provider) => provider.id),
+  ]);
+
+  await addProviderAndSelectModel(host, { providerId, name: providerId, baseUrl: check.baseUrl }, () =>
+    saveProviderRecord(host, providerId, buildCustomProviderRecord(check.baseUrl, value.apiKey)),
+  );
+}
+
+function promptCustomProvider(host: SlashCommandHost): Promise<CustomProviderValue | undefined> {
+  return new Promise((resolve) => {
+    const dialog = new CustomProviderDialogComponent((result: CustomProviderResult) => {
+      host.restoreEditor();
+      resolve(result.kind === 'ok' ? result.value : undefined);
+    });
+    host.mountEditorReplacement(dialog);
+  });
 }
 
 /**
@@ -209,7 +271,10 @@ async function handleProviderAdd(host: SlashCommandHost): Promise<void> {
  * itself is delegated to the same refresh orchestrator the CLI uses, so the
  * two surfaces cannot drift.
  */
-async function handleBuiltinProviderAdd(host: SlashCommandHost, providerId: string): Promise<void> {
+async function handleBuiltinProviderAdd(
+  host: SlashCommandHost,
+  providerId: string,
+): Promise<void> {
   const builtin = getBuiltInProvider(providerId);
   if (builtin === undefined) {
     host.showError(`Unknown built-in provider "${providerId}".`);
@@ -231,24 +296,49 @@ async function handleBuiltinProviderAdd(host: SlashCommandHost, providerId: stri
   );
   if (apiKey === undefined) return;
 
+  await addProviderAndSelectModel(
+    host,
+    { providerId: builtin.id, name: builtin.name, baseUrl: builtin.baseUrl },
+    () =>
+      saveProviderRecord(host, builtin.id, {
+        type: builtin.wire,
+        baseUrl: builtin.baseUrl,
+        apiKey,
+        // Same record the CLI writes: without this a TUI-added Zen loses the
+        // per-model wire pins and its Claude models go back to failing.
+        protocolOverrides: builtin.protocolOverrides,
+      }),
+  );
+}
+
+/**
+ * Shared tail of every add-a-provider flow: persist, discover models from the
+ * endpoint, reload config, then offer a default model.
+ *
+ * The provider record must exist before discovery: the orchestrator reads
+ * config to decide candidacy and to resolve the credential. A rejected key is
+ * still persisted deliberately — the user can correct it by re-running the
+ * flow, and a bad key is recoverable while a silently missing provider is
+ * indistinguishable from a broken install.
+ */
+async function addProviderAndSelectModel(
+  host: SlashCommandHost,
+  target: { readonly providerId: string; readonly name: string; readonly baseUrl: string },
+  save: () => Promise<void>,
+): Promise<void> {
   const controller = new AbortController();
   const cancel = (): void => {
     controller.abort();
   };
   host.cancelInFlight = cancel;
 
-  // The provider record must exist before discovery: the orchestrator reads
-  // config to decide candidacy and to resolve the credential. A rejected key
-  // is still persisted deliberately — the user can correct it by re-running
-  // this flow, and a bad key is recoverable while a silently missing provider
-  // is indistinguishable from a broken install.
-  await saveBuiltinProvider(host, builtin, apiKey);
+  await save();
 
-  const spinner = host.showLoginProgressSpinner(`Fetching models from ${builtin.baseUrl}`);
+  const spinner = host.showLoginProgressSpinner(`Fetching models from ${target.baseUrl}`);
   let discovered: RefreshResult;
   try {
     discovered = await refreshAllProviderModels(buildDiscoveryHost(host), {
-      providerId: builtin.id,
+      providerId: target.providerId,
     });
   } catch (error) {
     spinner.stop({ ok: false, label: 'Failed to fetch models.' });
@@ -258,18 +348,18 @@ async function handleBuiltinProviderAdd(host: SlashCommandHost, providerId: stri
     if (host.cancelInFlight === cancel) host.cancelInFlight = undefined;
   }
 
-  const failure = discovered.failed.find((f) => f.provider === builtin.id);
+  const failure = discovered.failed.find((f) => f.provider === target.providerId);
   if (failure !== undefined) {
     spinner.stop({ ok: false, label: 'Failed to fetch models.' });
-    host.showError(`Fetching models for ${builtin.name} failed: ${failure.reason}`);
+    host.showError(`Fetching models for ${target.name} failed: ${failure.reason}`);
     return;
   }
   spinner.stop({
     ok: true,
     label:
       discovered.changed.length > 0
-        ? `${builtin.name} added — ${discovered.changed[0]!.added} model(s) discovered.`
-        : `${builtin.name} is up to date.`,
+        ? `${target.name} added — ${discovered.changed[0]!.added} model(s) discovered.`
+        : `${target.name} is up to date.`,
   });
 
   await host.authFlow.refreshConfigAfterLogin();
@@ -278,16 +368,16 @@ async function handleBuiltinProviderAdd(host: SlashCommandHost, providerId: stri
   // have been saved, so tell the user what to do rather than silently leaving a
   // provider that cannot resolve a model.
   const aliases = Object.keys(host.state.appState.availableModels).filter((alias) =>
-    alias.startsWith(`${builtin.id}/`),
+    alias.startsWith(`${target.providerId}/`),
   );
   if (aliases.length === 0) {
     host.showError(
-      `${builtin.name} returned no models. Add them manually under [models."${builtin.id}/…"] in config.toml.`,
+      `${target.name} returned no models. Add them manually under [models."${target.providerId}/…"] in config.toml.`,
     );
     return;
   }
 
-  promptBuiltinModelSelection(host, builtin.id, aliases);
+  promptProviderModelSelection(host, target.providerId, aliases);
 }
 
 /**
@@ -310,29 +400,22 @@ function buildDiscoveryHost(host: SlashCommandHost): RefreshProviderHost {
   };
 }
 
-/** Persists a built-in provider with the entered key, replacing any prior record. */
-async function saveBuiltinProvider(
+/** Persists a provider record, replacing any prior record with the same id. */
+async function saveProviderRecord(
   host: SlashCommandHost,
-  builtin: BuiltInProvider,
-  apiKey: string,
+  providerId: string,
+  record: ProviderConfig,
 ): Promise<void> {
   const config = await host.harness.getConfig();
-  if (config.providers[builtin.id] !== undefined) {
-    await host.harness.removeProvider(builtin.id);
+  // Remove first: a spread cannot delete a key that is no longer part of the
+  // record (a stale `protocolOverrides` on a re-add would survive it).
+  if (config.providers[providerId] !== undefined) {
+    await host.harness.removeProvider(providerId);
   }
   const next = await host.harness.getConfig();
   next.providers = {
     ...next.providers,
-    [builtin.id]: {
-      type: builtin.wire,
-      baseUrl: builtin.baseUrl,
-      apiKey,
-      // Same record the CLI writes: without this a TUI-added Zen loses the
-      // per-model wire pins and its Claude models go back to failing.
-      ...(builtin.protocolOverrides !== undefined
-        ? { protocolOverrides: builtin.protocolOverrides }
-        : undefined),
-    },
+    [providerId]: record,
   };
   await host.harness.setConfig({
     providers: next.providers,
@@ -347,7 +430,7 @@ async function saveBuiltinProvider(
  * Cancelling leaves the provider and its models saved — only the default
  * selection is skipped.
  */
-function promptBuiltinModelSelection(
+function promptProviderModelSelection(
   host: SlashCommandHost,
   providerId: string,
   aliases: readonly string[],
@@ -389,11 +472,11 @@ function reopenProviderManager(host: SlashCommandHost): void {
 /**
  * Asks what kind of provider to add.
  *
- * Returns `'known'` / `'custom'` for the two registry-based paths, or a bare
- * vendor id (`'cline'`) when a built-in row was chosen — callers dispatch on
- * that by looking the id up in {@link BUILT_IN_PROVIDERS}. The literals are
- * documentation only: a bare `string` return keeps that third case type-safe
- * without a redundant-union lint.
+ * Returns `'known'` / `'custom'` for the two registry-based paths, `'endpoint'`
+ * for a pasted base URL, or a bare vendor id (`'cline'`) when a built-in row was
+ * chosen — callers dispatch on that by looking the id up in
+ * {@link BUILT_IN_PROVIDERS}. The literals are documentation only: a bare
+ * `string` return keeps those cases type-safe without a redundant-union lint.
  */
 function promptProviderAddSource(host: SlashCommandHost): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -410,6 +493,12 @@ function promptProviderAddSource(host: SlashCommandHost): Promise<string | undef
         label: p.name,
         description: p.description,
       })),
+      // Needs neither the catalog nor a registry — only the endpoint itself.
+      {
+        value: 'endpoint',
+        label: 'Custom endpoint',
+        description: 'Paste a base URL and an API key',
+      },
       { value: 'known', label: 'Known third-party provider' },
       { value: 'custom', label: 'Custom registry (api.json)' },
     ];
@@ -418,7 +507,7 @@ function promptProviderAddSource(host: SlashCommandHost): Promise<string | undef
       options,
       onSelect: (value) => {
         host.restoreEditor();
-        if (value === 'known' || value === 'custom') {
+        if (value === 'known' || value === 'custom' || value === 'endpoint') {
           resolve(value);
           return;
         }

@@ -37,6 +37,7 @@ import {
   getBuiltInProvider,
   type BuiltInProviderPin,
 } from '#/utils/built-in-providers';
+import { parseProviderBaseUrl } from '#/utils/custom-provider';
 import { refreshAllProviderModels } from '#/tui/utils/refresh-providers';
 
 interface WritableLike {
@@ -416,15 +417,9 @@ export async function handleProviderAddManual(
     deps.stderr.write('--base-url is required for a manual provider.\n');
     deps.exit(1);
   }
-  let parsedBaseUrl: URL;
-  try {
-    parsedBaseUrl = new URL(baseUrl);
-  } catch {
-    deps.stderr.write(`--base-url "${baseUrl}" is not a valid URL.\n`);
-    deps.exit(1);
-  }
-  if (parsedBaseUrl.protocol !== 'http:' && parsedBaseUrl.protocol !== 'https:') {
-    deps.stderr.write(`--base-url must be http(s), got "${parsedBaseUrl.protocol}".\n`);
+  const baseUrlCheck = parseProviderBaseUrl(baseUrl);
+  if (!baseUrlCheck.ok) {
+    deps.stderr.write(`--base-url ${baseUrlCheck.reason}\n`);
     deps.exit(1);
   }
   const apiKey = resolveApiKey(opts.apiKey, deps.env);

@@ -7,7 +7,7 @@
  * a small host rig.
  * Run: pnpm -C apps/kimi-code exec vitest run test/tui/commands/provider.test.ts
  */
-import type { ModelAlias } from '@moonshot-ai/kimi-code-sdk';
+import type { KimiConfig, ModelAlias } from '@moonshot-ai/kimi-code-sdk';
 import type { Component, Focusable } from '@moonshot-ai/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -21,10 +21,31 @@ import { handleProviderCommand, setDefaultModel } from '#/tui/commands/provider'
 import { ApiKeyInputDialogComponent } from '#/tui/components/dialogs/api-key-input-dialog';
 import { ChoicePickerComponent } from '#/tui/components/dialogs/choice-picker';
 import { TabbedModelSelectorComponent } from '#/tui/components/dialogs/tabbed-model-selector';
+import { BUILT_IN_PROVIDERS } from '#/utils/built-in-providers';
+import {
+  buildCustomProviderRecord,
+  deriveProviderId,
+  parseProviderBaseUrl,
+} from '#/utils/custom-provider';
+
+// Model discovery is the only outbound call the add flow makes; stubbed so the
+// test asserts what /provider writes, not what an endpoint happens to answer.
+vi.mock('#/tui/utils/refresh-providers', () => ({
+  refreshAllProviderModels: vi.fn(async (_host: unknown, options: { providerId?: string }) => {
+    const providerId = options.providerId ?? '';
+    return {
+      changed: [{ providerId, providerName: providerId, added: 2, removed: 0 }],
+      unchanged: [],
+      failed: [],
+    };
+  }),
+}));
 
 const ESC = String.fromCodePoint(27);
 const ENTER = '\r';
 const UP = `${ESC}[A`;
+const DOWN = `${ESC}[B`;
+const TAB = '\t';
 
 function makeHost(
   options: {
@@ -188,6 +209,17 @@ function makeProviderHost() {
     },
   };
   const mounted: (Component & Focusable)[] = [];
+  // The add flow reads config before it writes, so getConfig/removeProvider have
+  // to mutate one shared record the way the real harness does.
+  const config: KimiConfig = {
+    providers: {
+      empty: { type: 'openai' },
+      acme: { type: 'openai' },
+      other: { type: 'openai' },
+    },
+    defaultModel: 'other/thing',
+  };
+  const spinnerStop = vi.fn();
   const host = {
     state: { appState },
     waitForLazyCreation: vi.fn(async () => {}),
@@ -195,7 +227,17 @@ function makeProviderHost() {
       mounted.push(panel);
     }),
     restoreEditor: vi.fn(),
-    harness: { setConfig: vi.fn(async () => ({})) },
+    harness: {
+      getConfig: vi.fn(async (): Promise<KimiConfig> => config),
+      removeProvider: vi.fn(async (providerId: string): Promise<KimiConfig> => {
+        delete config.providers[providerId];
+        return config;
+      }),
+      setConfig: vi.fn(async (patch: Partial<KimiConfig>): Promise<KimiConfig> => {
+        Object.assign(config, patch);
+        return config;
+      }),
+    },
     authFlow: {
       refreshConfigAfterLogin: vi.fn(async () => false),
       activateModelAfterLogin: vi.fn(async () => false),
@@ -203,12 +245,18 @@ function makeProviderHost() {
     track: vi.fn(),
     showStatus: vi.fn(),
     showError: vi.fn(),
+    showLoginProgressSpinner: vi.fn(() => ({ stop: spinnerStop })),
   } as unknown as SlashCommandHost & {
-    harness: { setConfig: ReturnType<typeof vi.fn> };
+    harness: {
+      getConfig: ReturnType<typeof vi.fn>;
+      removeProvider: ReturnType<typeof vi.fn>;
+      setConfig: ReturnType<typeof vi.fn>;
+    };
     restoreEditor: ReturnType<typeof vi.fn>;
     showError: ReturnType<typeof vi.fn>;
+    showLoginProgressSpinner: ReturnType<typeof vi.fn>;
   };
-  return { host, mounted };
+  return { host, mounted, appState, spinnerStop };
 }
 
 function press(panel: Component & Focusable, keys: readonly string[]): void {
@@ -257,6 +305,178 @@ describe('handleProviderCommand', () => {
     expect(host.showError).toHaveBeenCalledWith(expect.stringContaining('empty'));
     expect(mounted).toHaveLength(2);
     expect(mounted[1]).not.toBeInstanceOf(TabbedModelSelectorComponent);
+  });
+});
+
+/**
+ * Opens the "Custom endpoint" dialog with real key input: the add row on the
+ * provider manager, then the source picker. Each key must stay one whole string
+ * — splitting `\x1b[B` into characters would deliver a bare Escape, which
+ * cancels the picker.
+ */
+async function openCustomEndpointDialog(
+  rig: ReturnType<typeof makeProviderHost>,
+): Promise<void> {
+  const { host, mounted } = rig;
+  await handleProviderCommand(host);
+  // Rows are [empty, acme, other(current), add]; one hop down lands on `add`.
+  press(mounted[0]!, [DOWN, ENTER]);
+  await vi.waitFor(() => {
+    expect(mounted).toHaveLength(2);
+  });
+
+  // The source picker lists every built-in vendor first, so the endpoint row
+  // sits exactly BUILT_IN_PROVIDERS.length hops below the top.
+  const hops = Array.from({ length: BUILT_IN_PROVIDERS.length }, () => DOWN);
+  press(mounted[1]!, [...hops, ENTER]);
+  await vi.waitFor(() => {
+    expect(mounted).toHaveLength(3);
+  });
+}
+
+/**
+ * Types literal text one keystroke at a time, the way a person would: an
+ * escape sequence must stay a single key, but plain text is fine to split.
+ */
+function typed(text: string): string[] {
+  return text.split('');
+}
+
+/**
+ * Drives the whole "Custom endpoint" path. Resolves once the provider record has
+ * been persisted; discovery and the model pick are awaited by the callers that
+ * care about them.
+ */
+async function addCustomEndpoint(
+  rig: ReturnType<typeof makeProviderHost>,
+  baseUrl: string,
+  apiKey: string | undefined,
+): Promise<void> {
+  const { host, mounted } = rig;
+  await openCustomEndpointDialog(rig);
+
+  // Enter on the URL field advances to the key field, Enter on it submits.
+  press(mounted[2]!, [...typed(baseUrl), ENTER, ...typed(apiKey ?? ''), ENTER]);
+  await vi.waitFor(() => {
+    expect(host.harness.setConfig).toHaveBeenCalled();
+  });
+}
+
+function seedModel(
+  appState: ReturnType<typeof makeProviderHost>['appState'],
+  alias: string,
+): void {
+  const [provider, model] = alias.split('/') as [string, string];
+  const models = appState.availableModels as unknown as Record<string, ModelAlias>;
+  models[alias] = { provider, model, maxContextSize: 200_000 };
+}
+
+describe('custom endpoint provider', () => {
+  it('adds a provider from a pasted base URL and key, then offers the discovered models', async () => {
+    const rig = makeProviderHost();
+    seedModel(rig.appState, 'api-example/sonnet');
+
+    await addCustomEndpoint(rig, 'https://api.example.com/v1', 'YOUR_API_KEY');
+
+    const patch = rig.host.harness.setConfig.mock.calls.at(-1)![0] as KimiConfig;
+    // The id comes from the hostname, never from the user, and the wire is
+    // OpenAI-compatible so the key needs no protocol picker.
+    expect(patch.providers['api-example']).toEqual({
+      type: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'YOUR_API_KEY',
+    });
+    expect(rig.spinnerStop).toHaveBeenCalledWith({
+      ok: true,
+      label: 'api-example added — 2 model(s) discovered.',
+    });
+
+    await vi.waitFor(() => {
+      expect(rig.mounted.at(-1)).toBeInstanceOf(TabbedModelSelectorComponent);
+    });
+    expect(rig.host.showError).not.toHaveBeenCalled();
+  });
+
+  it('records a keyless endpoint as sending no credential at all', async () => {
+    const rig = makeProviderHost();
+    seedModel(rig.appState, 'localhost-11434/llama3');
+
+    await addCustomEndpoint(rig, 'http://localhost:11434/v1', undefined);
+
+    const patch = rig.host.harness.setConfig.mock.calls.at(-1)![0] as KimiConfig;
+    // Without `none`, the OpenAI-compatible client substitutes the literal
+    // `unused` as the key and sends `Authorization: Bearer unused`.
+    expect(patch.providers['localhost-11434']).toEqual({
+      type: 'openai',
+      baseUrl: 'http://localhost:11434/v1',
+      authScheme: { kind: 'none' },
+    });
+
+    // An empty key is a valid answer: the dialog skips the key field instead of
+    // demanding one, and the rest of the add flow runs unchanged.
+    await vi.waitFor(() => {
+      expect(rig.mounted.at(-1)).toBeInstanceOf(TabbedModelSelectorComponent);
+    });
+    expect(rig.host.showError).not.toHaveBeenCalled();
+  });
+
+  it('keeps the dialog open on a base URL that is not usable', async () => {
+    const rig = makeProviderHost();
+    await openCustomEndpointDialog(rig);
+
+    press(rig.mounted[2]!, [...typed('ftp://api.example.com'), ENTER, ENTER]);
+
+    // Invalid URL: the dialog reports it in place instead of writing anything.
+    expect(rig.mounted[2]!.render(80).join('\n')).toContain('Base URL must be http(s)');
+    expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe('custom provider helpers', () => {
+  it('derives the id from the hostname and avoids every taken id', () => {
+    expect(deriveProviderId('https://api.example.com/v1', [])).toBe('api-example');
+    expect(deriveProviderId('https://127.0.0.1:1234/v1', [])).toBe('127-0-0-1-1234');
+    expect(deriveProviderId('https://api.example.com/v1', ['api-example'])).toBe(
+      'api-example-2',
+    );
+    expect(deriveProviderId('https://api.example.com/v1', ['api-example', 'api-example-2'])).toBe(
+      'api-example-3',
+    );
+    // A built-in id must never be shadowed by a custom row.
+    expect(deriveProviderId('https://openrouter.ai/api/v1', ['openrouter'])).toBe(
+      'openrouter-2',
+    );
+  });
+
+  it('rejects a base URL that is unusable or carries the secret inline', () => {
+    expect(parseProviderBaseUrl('   ')).toEqual({ ok: false, reason: 'cannot be empty.' });
+    expect(parseProviderBaseUrl('not a url')).toEqual({
+      ok: false,
+      reason: '"not a url" is not a valid URL.',
+    });
+    expect(parseProviderBaseUrl('ftp://api.example.com')).toEqual({
+      ok: false,
+      reason: 'must be http(s), got "ftp:".',
+    });
+    expect(parseProviderBaseUrl('https://me:YOUR_API_KEY@api.example.com')).toEqual({
+      ok: false,
+      reason: 'must not embed a username or password.',
+    });
+    expect(parseProviderBaseUrl('  https://api.example.com/v1  ')).toEqual({
+      ok: true,
+      baseUrl: 'https://api.example.com/v1',
+    });
+  });
+
+  it('sends no credential header only when no key was entered', () => {
+    expect(buildCustomProviderRecord('https://api.example.com/v1', 'YOUR_API_KEY')).toEqual({
+      type: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'YOUR_API_KEY',
+    });
+    expect(buildCustomProviderRecord('http://localhost:11434/v1', undefined).authScheme).toEqual({
+      kind: 'none',
+    });
   });
 });
 
@@ -369,7 +589,7 @@ describe('handleContextCommand', () => {
 
     expect(mounted).toHaveLength(1);
     expect(mounted[0]).toBeInstanceOf(ChoicePickerComponent);
-    expect(mounted[0]!.render().join('\n')).toContain('thing (other)');
+    expect(mounted[0]!.render(80).join('\n')).toContain('thing (other)');
 
     // The list opens on the active model's row; one hop up lands on sonnet.
     press(mounted[0]!, [UP, ENTER]);
