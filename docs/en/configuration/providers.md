@@ -95,9 +95,32 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxxxx"
 ```
 
+### Custom auth headers and anonymous access
+
+This subsection covers where an `openai` provider puts the API key, and how to turn the credential off. By default the key travels as `Authorization: Bearer <key>`, which is what OpenAI itself expects. Local servers and third-party gateways often disagree: some read the key from a header you name, and some check nothing at all. The `auth_scheme` table selects between those cases.
+
+- `kind = "custom-header"` — send the API key in the header named by `header`, and send no `Authorization` header
+- `kind = "none"` — send no credential at all, for a local or self-hosted server that does not check one
+
+```toml
+[providers.local-gateway]
+type = "openai"
+base_url = "http://localhost:8080/v1"
+
+[providers.local-gateway.auth_scheme]
+kind = "custom-header"
+header = "x-api-key"
+```
+
+`api_key` or `api_key_env` still supplies the value that lands in that header — `auth_scheme` only changes where the credential goes, not what it is. A `custom-header` scheme without `header` is a configuration error.
+
+::: warning
+`auth_scheme` applies to the `openai` and `openai_responses` types only. Setting it on `anthropic`, `google-genai`, or `vertexai` fails with a configuration error instead of being silently ignored.
+:::
+
 ## `openai_responses`
 
-Corresponds to OpenAI's newer Responses API, always operating in streaming mode. Configuration is the same as `openai`.
+Corresponds to OpenAI's newer Responses API, always operating in streaming mode. Configuration is the same as `openai`, including [custom auth headers and anonymous access](#custom-auth-headers-and-anonymous-access).
 
 - Default `base_url`: `https://api.openai.com/v1`
 - Credential key names: `OPENAI_API_KEY`, `OPENAI_BASE_URL`

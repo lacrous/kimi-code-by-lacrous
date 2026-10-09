@@ -1,5 +1,6 @@
 import { createDecorator, type ServiceIdentifier } from '#/_base/di/instantiation';
 import type { Event, IWaitUntil } from '#/_base/event';
+import type { LlmAuthScheme } from '#human/llm/model';
 import type { Protocol } from '#/llm-adapter/protocol/protocol';
 
 export type ProviderType = string;
@@ -12,6 +13,8 @@ export interface OAuthRef {
 
 export type ModelSource = 'static' | 'discover' | 'oauth-catalog';
 
+export type ProviderAuthScheme = LlmAuthScheme;
+
 export interface ProviderConfig {
   modelSource?: ModelSource;
 
@@ -23,6 +26,7 @@ export interface ProviderConfig {
   apiKey?: string;
   apiKeyEnv?: string;
   oauth?: OAuthRef;
+  authScheme?: ProviderAuthScheme;
   env?: Record<string, string>;
   source?: Record<string, unknown>;
   protocolOverrides?: Record<string, Protocol>;

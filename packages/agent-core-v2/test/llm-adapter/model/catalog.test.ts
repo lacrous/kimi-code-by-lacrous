@@ -1,3 +1,5 @@
+import { createServer } from 'node:http';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createScopedTestHost } from '#/_base/di/test';
@@ -6,6 +8,8 @@ import { isError2 } from '#/_base/errors/errors';
 import { IConfigService } from '#/app/config/config';
 import { ConfigErrors } from '#/app/config/errors';
 import { UNKNOWN_CAPABILITY } from '#/llm-adapter/contract/capability';
+import type { LlmAuthScheme, LlmModel } from '#human/llm/model';
+import { resolveAuthSchemeHeaders } from '#human/llm/requester/auth-scheme-headers';
 import { emptyUsage } from '#human/llm/usage';
 import type { LlmRequester } from '#human/llm/requester/requester';
 import { IProtocolAdapterRegistry } from '#/llm-adapter/protocol/protocol';
@@ -641,6 +645,209 @@ describe('headers merge order', () => {
       host.dispose();
     }
   });
+});
+
+describe('provider auth_scheme', () => {
+  it('routes auth_scheme into providerOptions for the OpenAI wires and nowhere else', () => {
+    const { host, catalog } = createHost({
+      providers: {
+        gateway: {
+          type: 'openai',
+          apiKey: 'sk-gw',
+          baseUrl: 'https://gateway.example.test/v1',
+          authScheme: { kind: 'custom-header', header: 'x-api-key' },
+        },
+        responses: { type: 'openai_responses', apiKey: 'sk-r', authScheme: { kind: 'none' } },
+        plain: { type: 'openai', apiKey: 'sk-p', baseUrl: 'https://plain.example.test/v1' },
+      },
+      models: {
+        gw: { provider: 'gateway', model: 'gw-1', maxContextSize: 1000 },
+        rs: { provider: 'responses', model: 'gw-1', maxContextSize: 1000 },
+        pl: { provider: 'plain', model: 'gw-1', maxContextSize: 1000 },
+      },
+    });
+    try {
+      expect(catalog.get('gw').providerOptions).toEqual({
+        authScheme: { kind: 'custom-header', header: 'x-api-key' },
+      });
+      expect(catalog.get('rs').providerOptions).toEqual({ authScheme: { kind: 'none' } });
+      expect(catalog.get('pl').providerOptions).toBeUndefined();
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('rejects auth_scheme on protocols that cannot carry it instead of ignoring it', () => {
+    const expectInvalid = (type: string): void => {
+      const { host, catalog } = createHost({
+        providers: {
+          p: { type, apiKey: 'sk', authScheme: { kind: 'custom-header', header: 'x-api-key' } },
+        },
+        models: { m: { provider: 'p', model: 'm-1', maxContextSize: 1000 } },
+      });
+      try {
+        expect(() => catalog.get('m')).toThrowError(
+          expect.objectContaining({ code: ConfigErrors.codes.CONFIG_INVALID }),
+        );
+      } finally {
+        host.dispose();
+      }
+    };
+    expectInvalid('anthropic');
+    expectInvalid('google-genai');
+  });
+});
+
+describe('resolveAuthSchemeHeaders', () => {
+  function schemeModel(authScheme: LlmAuthScheme, apiKey?: string): LlmModel {
+    return { provider: 'p', model: 'm', capability: UNKNOWN_CAPABILITY, apiKey, authScheme };
+  }
+
+  const HOST = { 'User-Agent': 'kimi-test/1.0', Authorization: 'Bearer unused' };
+
+  it('leaves the headers untouched when the provider declares no scheme', () => {
+    const model: LlmModel = { provider: 'p', model: 'm', capability: UNKNOWN_CAPABILITY, apiKey: 'sk' };
+    expect(resolveAuthSchemeHeaders(model, HOST)).toBe(HOST);
+    expect(resolveAuthSchemeHeaders(model, undefined)).toBeUndefined();
+  });
+
+  it('drops Authorization for an anonymous provider and keeps every other header', () => {
+    expect(resolveAuthSchemeHeaders(schemeModel({ kind: 'none' }, 'sk'), HOST)).toEqual({
+      'User-Agent': 'kimi-test/1.0',
+      Authorization: null,
+    });
+  });
+
+  it('emits the Authorization delete even when the caller supplied no Authorization header', () => {
+    expect(resolveAuthSchemeHeaders(schemeModel({ kind: 'none' }, 'sk'), {})).toEqual({
+      Authorization: null,
+    });
+    expect(
+      resolveAuthSchemeHeaders(schemeModel({ kind: 'custom-header', header: 'x-api-key' }, 'sk-1'), {}),
+    ).toEqual({ Authorization: null, 'x-api-key': 'sk-1' });
+  });
+
+  it('moves the key into the named header and drops Authorization for a custom-header provider', () => {
+    expect(
+      resolveAuthSchemeHeaders(schemeModel({ kind: 'custom-header', header: 'x-api-key' }, 'sk-1'), HOST),
+    ).toEqual({ 'User-Agent': 'kimi-test/1.0', Authorization: null, 'x-api-key': 'sk-1' });
+  });
+
+  it('sends the raw key when the custom header is Authorization itself', () => {
+    expect(
+      resolveAuthSchemeHeaders(
+        schemeModel({ kind: 'custom-header', header: 'Authorization' }, 'sk-raw'),
+        HOST,
+      ),
+    ).toEqual({ 'User-Agent': 'kimi-test/1.0', Authorization: 'sk-raw' });
+  });
+
+  it('never falls back to the SDK bearer token when no key resolved', () => {
+    expect(
+      resolveAuthSchemeHeaders(schemeModel({ kind: 'custom-header', header: 'x-api-key' }), HOST),
+    ).toEqual({ 'User-Agent': 'kimi-test/1.0', Authorization: null });
+  });
+});
+
+describe('auth_scheme on the wire', () => {
+  function sse(lines: string[]): string {
+    return `${lines.join('\n')}\n\n`;
+  }
+
+  interface WireStub {
+    readonly type: string;
+    readonly chunks: string;
+  }
+
+  const WIRES: WireStub[] = [
+    {
+      type: 'openai',
+      chunks: [
+        sse([
+          'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":0,"model":"m-1","choices":[{"index":0,"delta":{"role":"assistant","content":"pong"},"finish_reason":null}]}',
+        ]),
+        sse([
+          'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":0,"model":"m-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+        ]),
+        sse(['data: [DONE]']),
+      ].join(''),
+    },
+    {
+      type: 'openai_responses',
+      chunks: [
+        sse([
+          'event: response.output_text.delta',
+          'data: {"type":"response.output_text.delta","delta":"pong"}',
+        ]),
+        sse([
+          'event: response.completed',
+          'data: {"type":"response.completed","response":{"id":"resp-1","status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}',
+        ]),
+        sse(['event: done', 'data: [DONE]']),
+      ].join(''),
+    },
+  ];
+
+  async function pingAndCapture(
+    authScheme: LlmAuthScheme | undefined,
+    wire: WireStub,
+  ): Promise<Record<string, string | string[] | undefined>> {
+    let captured: Record<string, string | string[] | undefined> = {};
+    const server = createServer((req, res) => {
+      captured = req.headers;
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(wire.chunks);
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('stub server has no port');
+    const { host, catalog } = createHost({
+      providers: {
+        stub: {
+          type: wire.type,
+          apiKey: 'sk-wire',
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          authScheme,
+        },
+      },
+      models: { m1: { provider: 'stub', model: 'm-1', maxContextSize: 1000 } },
+    });
+    try {
+      expect(await catalog.ping('m1')).toMatchObject({ ok: true, text: 'pong' });
+      return captured;
+    } finally {
+      host.dispose();
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+      });
+    }
+  }
+
+  it.each(WIRES)('$type sends no Authorization header at all for an anonymous provider', async (
+    wire,
+  ) => {
+    expect((await pingAndCapture({ kind: 'none' }, wire))['authorization']).toBeUndefined();
+  });
+
+  it.each(WIRES)(
+    '$type sends the key in the named header and no Authorization for a custom-header provider',
+    async (wire) => {
+      const headers = await pingAndCapture({ kind: 'custom-header', header: 'x-api-key' }, wire);
+      expect(headers['authorization']).toBeUndefined();
+      expect(headers['x-api-key']).toBe('sk-wire');
+    },
+  );
+
+  it.each(WIRES)(
+    '$type still sends the default bearer token when the provider declares no scheme',
+    async (wire) => {
+      expect((await pingAndCapture(undefined, wire))['authorization']).toBe('Bearer sk-wire');
+    },
+  );
 });
 
 describe('ModelCatalog ping', () => {

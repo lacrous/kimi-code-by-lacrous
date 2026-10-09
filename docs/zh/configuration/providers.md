@@ -95,9 +95,32 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxxxx"
 ```
 
+### 自定义认证请求头与匿名访问
+
+本小节说明 `openai` 供应商把 API 密钥放在哪里，以及如何关掉凭证。默认情况下密钥以 `Authorization: Bearer <key>` 发送，这也是 OpenAI 官方期望的形式。但本地服务器和第三方网关未必一致：有的从你指定的请求头里读密钥，有的则完全不校验。`auth_scheme` 子表就是在这些情况之间做选择。
+
+- `kind = "custom-header"` —— 把 API 密钥放进 `header` 指定的请求头，并且不发送 `Authorization` 头
+- `kind = "none"` —— 完全不发送凭证，适用于不做校验的本地或自托管服务器
+
+```toml
+[providers.local-gateway]
+type = "openai"
+base_url = "http://localhost:8080/v1"
+
+[providers.local-gateway.auth_scheme]
+kind = "custom-header"
+header = "x-api-key"
+```
+
+密钥的值仍然来自 `api_key` 或 `api_key_env`，`auth_scheme` 只改变凭证发送的位置，不改变凭证本身。`custom-header` 缺少 `header` 属于配置错误。
+
+::: warning 注意
+`auth_scheme` 仅适用于 `openai` 和 `openai_responses` 类型。写在 `anthropic`、`google-genai` 或 `vertexai` 上会直接报配置错误，不会被静默忽略。
+:::
+
 ## `openai_responses`
 
-对应 OpenAI 较新的 Responses API，始终以流式方式工作。配置方式与 `openai` 相同。
+对应 OpenAI 较新的 Responses API，始终以流式方式工作。配置方式与 `openai` 相同，包括[自定义认证请求头与匿名访问](#自定义认证请求头与匿名访问)。
 
 - 默认 `base_url`：`https://api.openai.com/v1`
 - 凭证键名：`OPENAI_API_KEY`、`OPENAI_BASE_URL`

@@ -13,6 +13,7 @@ import {
   type StreamParseSink,
 } from '#/llm/protocol/format';
 import { encodeReasoningEffortFallback } from '#/llm/thinking';
+import { resolveAuthSchemeHeaders } from '#/llm/requester/auth-scheme-headers';
 import {
   mergeRequestHeaders,
   type LlmClientContext,
@@ -57,7 +58,7 @@ function createClient(model: LlmModel, headers: Record<string, string> | undefin
   return new OpenAI({
     apiKey: model.apiKey ?? 'unused',
     baseURL: model.baseUrl,
-    defaultHeaders: headers,
+    defaultHeaders: resolveAuthSchemeHeaders(model, headers),
     maxRetries: 0,
   });
 }

@@ -127,6 +127,7 @@ timeout = 5
 | `api_key_env` | `string` | 否 | 指定一个 shell 环境变量名，从该变量读取 API 密钥，密钥不写入配置文件；每次请求时读取。与 `api_key`、`oauth` 互斥；变量未设置或为空时请求报错并指明变量名 |
 | `base_url` | `string` | 否 | API 基础 URL |
 | `oauth` | `table` | 否 | OAuth 凭据引用（`storage`、`key` 两个字段），由登录流程自动注入，通常无需手写 |
+| `auth_scheme` | `table` | 否 | 仅 `openai` 和 `openai_responses`：`kind = "custom-header"` 搭配 `header = "<名称>"` 把 API 密钥放进该请求头而不是 `Authorization`；`kind = "none"` 则不发送凭证。详见[平台与模型](./providers.md#自定义认证请求头与匿名访问) |
 | `env` | `table<string, string>` | 否 | 供应商凭证的备用来源，见 `env` 子表 |
 | `custom_headers` | `table<string, string>` | 否 | 每次请求附加的自定义 HTTP 头 |
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { createDecorator, type ServiceIdentifier } from '#/_base/di/instantiation';
+import type { LlmAuthScheme } from '#human/llm/model';
 
 import type { ModelCapability } from '../contract/capability';
 import type { Model } from '../model/catalog';
@@ -19,6 +20,7 @@ export interface ProtocolProviderOptions {
   readonly offEffort?: string;
   readonly adaptiveThinking?: boolean;
   readonly promptCacheKey?: boolean;
+  readonly authScheme?: LlmAuthScheme;
   readonly betaApi?: boolean;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly vertexai?: boolean;

@@ -61,6 +61,7 @@ import {
   DEFAULT_MODEL_SECTION,
   MODELS_SECTION,
   PROVIDERS_SECTION,
+  ProvidersSectionSchema,
   THINKING_SECTION,
 } from '#/app/kosongConfig/configSection';
 import '#/app/kosongConfig/envOverlay';
@@ -3218,6 +3219,160 @@ describe('ConfigService persistence guards', () => {
 
     expect(config.inspect(THINKING_SECTION).userValue).toEqual({ enabled: true });
     expect(await stored(storage)).toBe('[thinking]\nenabled = false\n');
+
+    disposables.dispose();
+  });
+});
+
+describe('provider auth_scheme config', () => {
+  async function createAuthSchemeConfig(toml: string) {
+    const disposables = new DisposableStore();
+    const ix = disposables.add(new TestInstantiationService());
+    const storage = new InMemoryStorageService();
+    await storage.write('', 'config.toml', new TextEncoder().encode(toml));
+    ix.stub(ILogService, stubLog());
+    ix.stub(IBootstrapService, stubBootstrap('/tmp/kimi-cfg-auth-scheme'));
+    ix.stub(IFileSystemStorageService, storage);
+    ix.set(IAtomicTomlDocumentStore, new SyncDescriptor(TomlAtomicDocumentStore));
+    ix.set(IConfigRegistry, new SyncDescriptor(ConfigRegistry));
+    ix.set(IConfigService, new SyncDescriptor(ConfigService));
+    const config = ix.get(IConfigService);
+    await config.ready;
+    const stored = async (): Promise<string> =>
+      new TextDecoder().decode(await storage.read('', 'config.toml'));
+    return { config, disposables, stored };
+  }
+
+  it('parses a nested auth_scheme table into the camel-cased provider entry', async () => {
+    const { config, disposables } = await createAuthSchemeConfig(
+      [
+        '[providers.acme]',
+        'type = "openai"',
+        'api_key = "sk-acme"',
+        '',
+        '[providers.acme.auth_scheme]',
+        'kind = "custom-header"',
+        'header = "x-api-key"',
+        '',
+      ].join('\n'),
+    );
+
+    expect(config.get<Record<string, unknown>>(PROVIDERS_SECTION)).toEqual({
+      acme: {
+        type: 'openai',
+        apiKey: 'sk-acme',
+        authScheme: { kind: 'custom-header', header: 'x-api-key' },
+      },
+    });
+
+    disposables.dispose();
+  });
+
+  it('round-trips a custom-header scheme back to snake_case TOML', async () => {
+    const { config, disposables, stored } = await createAuthSchemeConfig(
+      '[providers.acme]\ntype = "openai"\napi_key = "sk-acme"\n',
+    );
+
+    await config.set(PROVIDERS_SECTION, {
+      acme: {
+        type: 'openai',
+        apiKey: 'sk-acme',
+        authScheme: { kind: 'custom-header', header: 'x-api-key' },
+      },
+    });
+
+    const doc = await stored();
+    expect(doc).toContain('[providers.acme.auth_scheme]');
+    expect(doc).toContain('kind = "custom-header"');
+    expect(doc).toContain('header = "x-api-key"');
+    expect(config.get<Record<string, unknown>>(PROVIDERS_SECTION)).toEqual({
+      acme: {
+        type: 'openai',
+        apiKey: 'sk-acme',
+        authScheme: { kind: 'custom-header', header: 'x-api-key' },
+      },
+    });
+
+    disposables.dispose();
+  });
+
+  it('keeps an anonymous scheme header-free through a write', async () => {
+    const { config, disposables, stored } = await createAuthSchemeConfig(
+      '[providers.local]\ntype = "openai"\nbase_url = "http://localhost:1234/v1"\n\n[providers.local.auth_scheme]\nkind = "none"\n',
+    );
+
+    await config.set(PROVIDERS_SECTION, {
+      local: {
+        type: 'openai',
+        baseUrl: 'http://localhost:1234/v1',
+        authScheme: { kind: 'none' },
+      },
+    });
+
+    expect(await stored()).toContain('kind = "none"');
+    expect(config.get<Record<string, unknown>>(PROVIDERS_SECTION)).toEqual({
+      local: {
+        type: 'openai',
+        baseUrl: 'http://localhost:1234/v1',
+        authScheme: { kind: 'none' },
+      },
+    });
+
+    disposables.dispose();
+  });
+
+  it('drops the auth_scheme table from disk when the scheme is unset', async () => {
+    const { config, disposables, stored } = await createAuthSchemeConfig(
+      [
+        '[providers.acme]',
+        'type = "openai"',
+        'api_key = "sk-acme"',
+        '',
+        '[providers.acme.auth_scheme]',
+        'kind = "custom-header"',
+        'header = "x-api-key"',
+        '',
+      ].join('\n'),
+    );
+
+    await config.replace(PROVIDERS_SECTION, { acme: { type: 'openai', apiKey: 'sk-acme' } });
+
+    const doc = await stored();
+    expect(doc).not.toContain('auth_scheme');
+    expect(config.get<Record<string, unknown>>(PROVIDERS_SECTION)).toEqual({
+      acme: { type: 'openai', apiKey: 'sk-acme' },
+    });
+
+    disposables.dispose();
+  });
+
+  it('rejects a custom-header scheme that names no header', () => {
+    const result = ProvidersSectionSchema.safeParse({
+      acme: { type: 'openai', authScheme: { kind: 'custom-header' } },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain('requires authScheme.header');
+  });
+
+  it('accepts a none scheme carrying no header', () => {
+    expect(
+      ProvidersSectionSchema.safeParse({ acme: { type: 'openai', authScheme: { kind: 'none' } } })
+        .success,
+    ).toBe(true);
+  });
+
+  it('blocks a persist that would store a custom-header scheme with no header', async () => {
+    const { config, disposables, stored } = await createAuthSchemeConfig(
+      '[providers.acme]\ntype = "openai"\napi_key = "sk-acme"\n',
+    );
+
+    await expect(
+      config.set(PROVIDERS_SECTION, {
+        acme: { type: 'openai', apiKey: 'sk-acme', authScheme: { kind: 'custom-header' } },
+      }),
+    ).rejects.toThrow();
+    expect(await stored()).toBe('[providers.acme]\ntype = "openai"\napi_key = "sk-acme"\n');
 
     disposables.dispose();
   });

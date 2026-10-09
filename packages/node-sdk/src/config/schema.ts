@@ -51,6 +51,17 @@ export type OAuthRef = z.infer<typeof OAuthRefSchema>;
 
 const StringRecordSchema = z.record(z.string(), z.string());
 
+export const ProviderAuthSchemeSchema = z
+  .object({
+    kind: z.enum(['custom-header', 'none']),
+    header: z.string().min(1).optional(),
+  })
+  .refine((scheme) => scheme.kind !== 'custom-header' || scheme.header !== undefined, {
+    error: 'authScheme.kind "custom-header" requires authScheme.header to name the header.',
+  });
+
+export type ProviderAuthScheme = z.infer<typeof ProviderAuthSchemeSchema>;
+
 export const ProviderConfigSchema = z.object({
   type: ProviderTypeSchema,
   apiKey: z.string().optional(),
@@ -58,6 +69,7 @@ export const ProviderConfigSchema = z.object({
   baseUrl: z.string().optional(),
   defaultModel: z.string().optional(),
   oauth: OAuthRefSchema.optional(),
+  authScheme: ProviderAuthSchemeSchema.optional(),
   env: StringRecordSchema.optional(),
   customHeaders: StringRecordSchema.optional(),
   source: z.record(z.string(), z.unknown()).optional(),

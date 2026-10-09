@@ -37,6 +37,17 @@ export const OAuthRefSchema = z.object({
 
 export const ModelSourceSchema = z.enum(['static', 'discover', 'oauth-catalog']);
 
+export const ProviderAuthSchemeKindSchema = z.enum(['custom-header', 'none']);
+
+export const ProviderAuthSchemeSchema = z
+  .object({
+    kind: ProviderAuthSchemeKindSchema,
+    header: z.string().min(1).optional(),
+  })
+  .refine((scheme) => scheme.kind !== 'custom-header' || scheme.header !== undefined, {
+    error: 'authScheme.kind "custom-header" requires authScheme.header to name the header.',
+  });
+
 const StringRecordSchema = z.record(z.string(), z.string());
 
 export const ProviderConfigSchema = z.object({
@@ -50,6 +61,7 @@ export const ProviderConfigSchema = z.object({
   apiKey: z.string().optional(),
   apiKeyEnv: z.string().optional(),
   oauth: OAuthRefSchema.optional(),
+  authScheme: ProviderAuthSchemeSchema.optional(),
   env: StringRecordSchema.optional(),
   source: z.record(z.string(), z.unknown()).optional(),
   protocolOverrides: z.record(z.string(), ProtocolSchema).optional(),
@@ -94,7 +106,7 @@ function providerEntryFromToml(data: Record<string, unknown>): Record<string, un
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     const targetKey = snakeToCamel(key);
-    if (targetKey === 'oauth') {
+    if (targetKey === 'oauth' || targetKey === 'authScheme') {
       out[targetKey] = isPlainObject(value) ? transformPlainObject(value) : value;
     } else if (targetKey === 'env' || targetKey === 'customHeaders') {
       out[targetKey] = isPlainObject(value) ? cloneRecord(value) : value;
@@ -124,7 +136,7 @@ function providerEntryToToml(
     if (provider[key] === undefined) delete out[camelToSnake(key)];
   }
   for (const [key, value] of Object.entries(provider)) {
-    if (key === 'oauth' && isPlainObject(value)) {
+    if ((key === 'oauth' || key === 'authScheme') && isPlainObject(value)) {
       out[camelToSnake(key)] = plainObjectToToml(value, undefined);
     } else if ((key === 'env' || key === 'customHeaders') && value !== undefined) {
       out[camelToSnake(key)] = cloneRecord(value);
@@ -135,7 +147,7 @@ function providerEntryToToml(
   return out;
 }
 
-const PROVIDER_CREDENTIAL_FIELDS = ['apiKey', 'oauth', 'apiKeyEnv'] as const;
+const PROVIDER_CREDENTIAL_FIELDS = ['apiKey', 'oauth', 'apiKeyEnv', 'authScheme'] as const;
 
 registerConfigSection(PROVIDERS_SECTION, ProvidersSectionSchema, {
   defaultValue: {},

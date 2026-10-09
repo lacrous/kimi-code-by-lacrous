@@ -192,6 +192,7 @@ export class ProtocolAdapterRegistry implements IProtocolAdapterRegistry {
       alwaysThinking: model.alwaysThinking,
       adaptiveThinking: model.providerOptions?.adaptiveThinking,
       promptCacheKey: model.providerOptions?.promptCacheKey,
+      authScheme: model.providerOptions?.authScheme,
     };
     return { requester, protocol: model.protocol, model: llmModel, media: route.media };
   }

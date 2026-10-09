@@ -1,6 +1,6 @@
 import { UNKNOWN_CAPABILITY, type ModelCapability } from '#/llm/capability';
 import type { LlmErrorMessage } from '#/llm/errors';
-import type { LlmModel } from '#/llm/model';
+import type { LlmAuthScheme, LlmModel } from '#/llm/model';
 import type { ProtocolName } from '#/llm/protocol/base';
 import type { Provider } from '#/llm/provider/definition';
 import type { LlmRequester } from '#/llm/requester/requester';
@@ -53,6 +53,7 @@ export interface CatalogProviderInfo {
   readonly customHeaders?: Readonly<Record<string, string>>;
   readonly defaultModel?: string;
   readonly oauth?: CatalogOAuthRef;
+  readonly authScheme?: LlmAuthScheme;
   readonly env?: Readonly<Record<string, string>>;
   readonly modelSource?: 'static' | 'discover' | 'oauth-catalog';
   readonly source?: Readonly<Record<string, unknown>>;

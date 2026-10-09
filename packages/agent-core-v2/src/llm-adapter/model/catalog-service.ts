@@ -10,6 +10,7 @@ import { ScopeActivation, registerScopedService } from '#/_base/di/scope';
 import { Error2 } from '#/_base/errors/errors';
 
 import type { CatalogModel, CatalogProviderInfo } from '#human/llm/provider-catalog';
+import type { LlmAuthScheme } from '#human/llm/model';
 import {
   createOAuthCredentialProvider,
   createStaticCredentialProvider,
@@ -553,6 +554,7 @@ function buildProtocolProviderOptions(
   baseUrl: string | undefined,
 ): ProtocolProviderOptions | undefined {
   const options: MutableProtocolProviderOptions = {};
+  const authScheme = supportedAuthScheme(model, protocol, provider);
 
   switch (protocol) {
     case 'anthropic':
@@ -566,6 +568,7 @@ function buildProtocolProviderOptions(
       if (reasoningKey !== undefined) options.reasoningKey = reasoningKey;
       if (model.offEffort !== undefined) options.offEffort = model.offEffort;
       if (model.promptCacheKey !== undefined) options.promptCacheKey = model.promptCacheKey;
+      if (authScheme !== undefined) options.authScheme = authScheme;
       break;
     }
     case 'google-genai': {
@@ -581,6 +584,7 @@ function buildProtocolProviderOptions(
     case 'openai_responses':
       if (model.offEffort !== undefined) options.offEffort = model.offEffort;
       if (model.promptCacheKey !== undefined) options.promptCacheKey = model.promptCacheKey;
+      if (authScheme !== undefined) options.authScheme = authScheme;
       break;
     default: {
       const exhaustive: never = protocol;
@@ -591,6 +595,20 @@ function buildProtocolProviderOptions(
   return Object.values(options).some((value) => value !== undefined)
     ? options
     : undefined;
+}
+
+function supportedAuthScheme(
+  model: ModelRecord,
+  protocol: Protocol,
+  provider: CatalogProviderInfo | undefined,
+): LlmAuthScheme | undefined {
+  const scheme = provider?.authScheme;
+  if (scheme === undefined) return undefined;
+  if (protocol === 'openai' || protocol === 'openai_responses') return scheme;
+  throw new Error2(
+    CONFIG_INVALID_ERROR_CODE,
+    `Provider "${model.providerId ?? model.provider ?? model.name ?? ''}" sets auth_scheme "${scheme.kind}", which the ${protocol} API does not support. auth_scheme is only available for providers using the openai or openai_responses protocol.`,
+  );
 }
 
 function vertexAIProject(provider: CatalogProviderInfo | undefined): string | undefined {

@@ -8,6 +8,13 @@ export interface LlmConnection {
   readonly vertexai?: boolean;
 }
 
+export type LlmAuthSchemeKind = 'custom-header' | 'none';
+
+export interface LlmAuthScheme {
+  kind: LlmAuthSchemeKind;
+  header?: string;
+}
+
 export interface LlmModel extends LlmConnection {
   readonly provider: string;
   readonly model: string;
@@ -15,6 +22,7 @@ export interface LlmModel extends LlmConnection {
   readonly maxContextSize?: number;
   readonly maxInputSize?: number;
   readonly promptCacheKey?: boolean;
+  readonly authScheme?: LlmAuthScheme;
 }
 
 export function modelKey(model: LlmModel): string {
