@@ -1,5 +1,11 @@
 # @lacrous/kimi-code
 
+## 3.3.1
+
+### Patch Changes
+
+- Republish the 3.3.0 release as 3.3.1. The npm registry rejected the original 3.3.0 publish and left the version unusable, so it was never installable.
+
 ## 3.3.0
 
 ### Minor Changes
