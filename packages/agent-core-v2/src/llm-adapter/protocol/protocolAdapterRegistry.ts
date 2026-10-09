@@ -1,6 +1,7 @@
 import { LifecycleScope } from '#/app/scopes';
 
 import { ScopeActivation, registerScopedService } from '#/_base/di/scope';
+import { BugIndicatingError } from '#/_base/errors/errors';
 import { UNKNOWN_CAPABILITY, toLlmCapability, type ModelCapability } from '../contract/capability';
 import type { ModelThinkingMetadata } from '#human/llm/thinking';
 import type { ProviderMediaContribution } from '#human/llm/media/upload';
@@ -63,77 +64,77 @@ function openAIReasoningTraitFor(model: Model): OpenAITrait | undefined {
   return reasoningKey === undefined ? undefined : { reasoningKey };
 }
 
+interface ProtocolRouteVariant {
+  readonly base: ProtocolBase<ProtocolTraitFor<Protocol>>;
+  readonly connection: ProviderConnection;
+}
+
+interface ProtocolRoute {
+  readonly providerId: string;
+  readonly base: ProtocolBase<ProtocolTraitFor<Protocol>>;
+  readonly connection: ProviderConnection;
+  readonly traitFor?: (model: Model) => ProtocolTraitFor<Protocol> | undefined;
+  readonly variantFor?: (model: Model) => ProtocolRouteVariant | undefined;
+}
+
+const PROTOCOL_ROUTES: Record<Protocol, ProtocolRoute> = {
+  openai: {
+    providerId: 'openai',
+    base: openAIBase,
+    connection: openAIConnection,
+    traitFor: openAIReasoningTraitFor,
+  },
+  openai_responses: {
+    providerId: 'openai-responses',
+    base: openAIResponsesBase,
+    connection: openAIConnection,
+  },
+  anthropic: {
+    providerId: 'anthropic',
+    base: anthropicBase,
+    connection: anthropicConnection,
+    variantFor: (model) =>
+      model.providerOptions?.betaApi === true
+        ? { base: anthropicBetaBase, connection: anthropicConnection }
+        : undefined,
+  },
+  'google-genai': {
+    providerId: 'google_genai',
+    base: googleGenAIBase,
+    connection: geminiConnection,
+    variantFor: (model) =>
+      model.providerOptions?.vertexai === true
+        ? { base: vertexGenAIBase, connection: vertexConnection }
+        : undefined,
+  },
+};
+
 function routeFor(model: Model): AdapterRoute {
+  const route: ProtocolRoute | undefined = PROTOCOL_ROUTES[model.protocol];
+  if (route === undefined) {
+    throw new BugIndicatingError(`protocol '${model.protocol}' has no adapter route`);
+  }
   const definition =
     model.providerType === undefined
       ? undefined
       : getProviderDefinition(model.providerType, model.protocol);
-  const routeMedia = definition?.modelSource === 'oauth-catalog' ? kimiMedia : undefined;
-  const custom =
-    definition !== undefined &&
-    (definition.trait !== undefined ||
-      definition.connection !== undefined ||
-      definition.classifyError !== undefined)
+  const override =
+    definition?.trait !== undefined ||
+    definition?.connection !== undefined ||
+    definition?.classifyError !== undefined
       ? definition
       : undefined;
-  switch (model.protocol) {
-    case 'openai':
-      return custom !== undefined
-        ? {
-            base: openAIBase,
-            trait: custom.trait,
-            connection: custom.connection,
-            classifyError: custom.classifyError,
-            providerId: 'openai',
-            media: routeMedia,
-          }
-        : {
-            base: openAIBase,
-            trait: openAIReasoningTraitFor(model),
-            connection: openAIConnection,
-            providerId: 'openai',
-          };
-    case 'openai_responses':
-      return custom !== undefined
-        ? {
-            base: openAIResponsesBase,
-            trait: custom.trait,
-            connection: custom.connection,
-            classifyError: custom.classifyError,
-            providerId: 'openai-responses',
-            media: routeMedia,
-          }
-        : {
-            base: openAIResponsesBase,
-            connection: openAIConnection,
-            providerId: 'openai-responses',
-          };
-    case 'anthropic': {
-      const base = model.providerOptions?.betaApi === true ? anthropicBetaBase : anthropicBase;
-      return custom !== undefined
-        ? {
-            base,
-            trait: custom.trait,
-            connection: custom.connection,
-            classifyError: custom.classifyError,
-            providerId: 'anthropic',
-            media: routeMedia,
-          }
-        : { base, connection: anthropicConnection, providerId: 'anthropic' };
-    }
-    case 'google-genai':
-      return model.providerOptions?.vertexai === true
-        ? {
-            base: vertexGenAIBase,
-            connection: vertexConnection,
-            providerId: 'google_genai',
-          }
-        : {
-            base: googleGenAIBase,
-            connection: geminiConnection,
-            providerId: 'google_genai',
-          };
-  }
+  const variant = route.variantFor?.(model);
+  const base = variant?.base ?? route.base;
+  const defaultConnection = variant?.connection ?? route.connection;
+  return {
+    base,
+    trait: override !== undefined ? override.trait : route.traitFor?.(model),
+    connection: override !== undefined ? override.connection : defaultConnection,
+    classifyError: override?.classifyError,
+    providerId: route.providerId,
+    media: definition?.modelSource === 'oauth-catalog' ? kimiMedia : undefined,
+  };
 }
 
 export class ProtocolAdapterRegistry implements IProtocolAdapterRegistry {

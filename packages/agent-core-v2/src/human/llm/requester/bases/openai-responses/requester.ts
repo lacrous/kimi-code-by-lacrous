@@ -7,15 +7,11 @@ import { toLlmSyntaxErrorMessage } from '#/llm/syntax-errors';
 import type { ProtocolBase, ProtocolRequesterOptions, TraitContext } from '#/llm/protocol/base';
 import { resolveModelConnection } from '#/llm/protocol/connection';
 import { applyThinking } from '#/llm/protocol/thinking';
-import {
-  resolveMaxCompletionCap,
-  type FormatRequestInput,
-  type StreamParseSink,
-} from '#/llm/protocol/format';
+import { resolveMaxCompletionCap, type FormatRequestInput } from '#/llm/protocol/format';
+import { consumeStream, resolveTransportHeaders } from '#/llm/protocol/stream';
 import { encodeReasoningEffortFallback } from '#/llm/thinking';
 import { resolveAuthSchemeHeaders } from '#/llm/requester/auth-scheme-headers';
 import {
-  mergeRequestHeaders,
   type LlmClientContext,
   type LlmRequestConfig,
   type LlmRequestContent,
@@ -134,10 +130,7 @@ async function executeOpenAIResponsesRequest(
   const { connection, trait, ctx, format, resolveClient, signal, onEvent } = transport;
   const client = resolveClient({
     model: ctx.model,
-    headers: mergeRequestHeaders(
-      mergeRequestHeaders(connection?.defaultHeaders?.(ctx), ctx.model.defaultHeaders),
-      request.headers,
-    ),
+    headers: resolveTransportHeaders(connection, ctx, request.headers),
   });
   onEvent?.({ type: 'llm.sent' });
   const { data: stream, response } = await client.responses
@@ -153,28 +146,7 @@ async function executeOpenAIResponsesRequest(
             return hooked !== undefined ? parseOpenAIResponsesUsage(hooked) : defaultUsage;
           },
   });
-  const streamState: { messageId?: string; failed: boolean } = { failed: false };
-  const sink: StreamParseSink = {
-    onDelta: (part) => onEvent?.({ type: 'llm.streaming.part', part }),
-    onFinish: (finish) => onEvent?.({ type: 'llm.streaming.finish', finish }),
-    onMessageId: (id) => {
-      if (id === streamState.messageId) return;
-      streamState.messageId = id;
-      onEvent?.({ type: 'llm.streaming.message_id', messageId: id });
-    },
-    onUsage: (usage) => onEvent?.({ type: 'llm.streaming.usage', usage }),
-    onError: (message) => {
-      streamState.failed = true;
-      onEvent?.({ type: 'llm.failed.remote', error: message });
-    },
-  };
-  for await (const chunk of stream) {
-    parse(chunk, sink);
-    if (streamState.failed) {
-      return;
-    }
-  }
-  onEvent?.({ type: 'llm.done' });
+  await consumeStream(stream, parse, onEvent);
 }
 
 export function createOpenAIResponsesRequester(

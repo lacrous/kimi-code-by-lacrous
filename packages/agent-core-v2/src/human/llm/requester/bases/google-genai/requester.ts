@@ -7,8 +7,8 @@ import type { ProtocolBase, ProtocolRequesterOptions, TraitContext } from '#/llm
 import { resolveModelConnection } from '#/llm/protocol/connection';
 import { applyThinking } from '#/llm/protocol/thinking';
 import { resolveMaxCompletionCap, type FormatRequestInput } from '#/llm/protocol/format';
+import { consumeStream, resolveTransportHeaders } from '#/llm/protocol/stream';
 import {
-  mergeRequestHeaders,
   type LlmClientContext,
   type LlmRequestConfig,
   type LlmRequestContent,
@@ -131,10 +131,7 @@ async function executeGoogleGenAIRequest(
   const { connection, ctx, format, resolveClient, signal, onEvent } = transport;
   const client = resolveClient({
     model: ctx.model,
-    headers: mergeRequestHeaders(
-      mergeRequestHeaders(connection?.defaultHeaders?.(ctx), ctx.model.defaultHeaders),
-      request.headers,
-    ),
+    headers: resolveTransportHeaders(connection, ctx, request.headers),
   });
   onEvent?.({ type: 'llm.sent' });
   const models = client.models as unknown as {
@@ -146,32 +143,11 @@ async function executeGoogleGenAIRequest(
     models.generateContentStream(request.params),
     abortPromise(signal),
   ]);
-  const parse = format.createStreamParser();
-  let messageId: string | undefined;
-  for await (const chunk of stream) {
+  await consumeStream(stream, format.createStreamParser(), onEvent, () => {
     if (signal.aborted) {
       throw createAbortException();
     }
-    let failed = false;
-    parse(chunk, {
-      onDelta: (part) => onEvent?.({ type: 'llm.streaming.part', part }),
-      onFinish: (finish) => onEvent?.({ type: 'llm.streaming.finish', finish }),
-      onMessageId: (id) => {
-        if (id === messageId) return;
-        messageId = id;
-        onEvent?.({ type: 'llm.streaming.message_id', messageId: id });
-      },
-      onUsage: (usage) => onEvent?.({ type: 'llm.streaming.usage', usage }),
-      onError: (message) => {
-        failed = true;
-        onEvent?.({ type: 'llm.failed.remote', error: message });
-      },
-    });
-    if (failed) {
-      return;
-    }
-  }
-  onEvent?.({ type: 'llm.done' });
+  });
 }
 
 export function createGoogleGenAIRequester(options?: GoogleGenAIRequesterOptions): LlmRequester {

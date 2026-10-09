@@ -9,8 +9,8 @@ import type { ProtocolBase, ProtocolRequesterOptions, TraitContext } from '#/llm
 import { resolveModelConnection } from '#/llm/protocol/connection';
 import { applyThinking } from '#/llm/protocol/thinking';
 import { resolveMaxCompletionCap, type FormatRequestInput } from '#/llm/protocol/format';
+import { consumeStream, resolveTransportHeaders } from '#/llm/protocol/stream';
 import {
-  mergeRequestHeaders,
   type LlmClientContext,
   type LlmRequestConfig,
   type LlmRequestContent,
@@ -168,7 +168,7 @@ async function executeAnthropicRequest(
   const { connection, ctx, format, resolveClient, signal, onEvent } = transport;
   const client = resolveClient({
     model: ctx.model,
-    headers: mergeRequestHeaders(connection?.defaultHeaders?.(ctx), ctx.model.defaultHeaders),
+    headers: resolveTransportHeaders(connection, ctx, undefined),
   });
   onEvent?.({ type: 'llm.sent' });
   const betaHeaders =
@@ -180,29 +180,7 @@ async function executeAnthropicRequest(
     ? await client.beta.messages.create(request.params, requestOptions).withResponse()
     : await client.messages.create(request.params, requestOptions).withResponse();
   onEvent?.({ type: 'llm.streaming.headers', headers: headersToRecord(response.headers) ?? {} });
-  const parse = format.createStreamParser();
-  let messageId: string | undefined;
-  for await (const event of stream) {
-    let failed = false;
-    parse(event, {
-      onDelta: (part) => onEvent?.({ type: 'llm.streaming.part', part }),
-      onFinish: (finish) => onEvent?.({ type: 'llm.streaming.finish', finish }),
-      onMessageId: (id) => {
-        if (id === messageId) return;
-        messageId = id;
-        onEvent?.({ type: 'llm.streaming.message_id', messageId: id });
-      },
-      onUsage: (usage) => onEvent?.({ type: 'llm.streaming.usage', usage }),
-      onError: (message) => {
-        failed = true;
-        onEvent?.({ type: 'llm.failed.remote', error: message });
-      },
-    });
-    if (failed) {
-      return;
-    }
-  }
-  onEvent?.({ type: 'llm.done' });
+  await consumeStream(stream, format.createStreamParser(), onEvent);
 }
 
 export function createAnthropicRequester(options?: AnthropicRequesterOptions): LlmRequester {

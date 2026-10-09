@@ -29,6 +29,8 @@ llm/
 │   ├── format.ts         ProtocolFormat：createStreamParser(sink 回调 + resolveUsage 选项)
 │   ├── connection.ts     ProviderConnection：endpoint 环境变量声明 + 默认 headers
 │   ├── thinking.ts       ThinkingStrategy → ThinkingContribution → applyThinking → AppliedThinking
+│   ├── stream.ts         共享流传输：resolveTransportHeaders + consumeStream
+│   │                     （四个 execute*Request 共用同一套 sink / 事件 / 短路路径）
 │   └── patterns.ts / rewrite.ts   MLIR 式 Pattern Rewriter（Message N:M 转换）
 │
 ├── requester/
@@ -60,7 +62,7 @@ llm/
 └── media/                媒体贡献点：cache / degrade / ref / resolver / store / upload
 ```
 
-请求生命周期：`generate` 收到 (config, content, control) → 调用方在每次 attempt 前把 `config.credentialProvider` 解析成带完整凭证的 model（machine 路径由 request actor 完成），请求因此始终携带新鲜凭证，而凭证刷新恢复（可恢复的 401 → `credentials.invalidate()`，以 `llm.recovering`（strategy 为 `credentials`）发出）在重发时自然重新解析（不经状态机的 direct 调用方——ping、generate、full compaction、媒体上传——通过 `runWithCredentialRecovery` / `streamWithCredentialRecovery` 共享同一套单次重试恢复） → requester 的 `prepare*Request` 函数将纯 format 阶段与 trait hooks 组合为协议 requestParams（format 将通用 Message[] 经 Pattern Rewriter 降低，trait 在其间调整 kwargs、转换消息、合并历史、转换 tools 并收尾 params） → `execute*Request` 调用官方 SDK → 流式 chunk 经无状态 parser 回调转换为 `llm.streaming.part / streaming.usage / streaming.finish / streaming.message_id` 事件 → 错误由 format 转换为 `llm.failed.*`；成功时 requester 发出 `llm.done`，失败时以 `llm.failed.syntax / llm.failed.remote` 收尾、不再发 `llm.done`。turn 在 `llm.done` 时经 `emptyResponseError` 判定空响应并重新转为 `llm.failed.remote`；turn machine 对 `llm.failed.remote` 先尝试恢复（由 engine 组装的策略链——可恢复 401 的凭证刷新在前、替换消息策略在后——经纯函数 `propose` 产出带不透明 `beforeNextAttempt` 副作用的记录，发 `llm.recovering`），再按策略 backoff 重试（尊重 Retry-After，发 `llm.retrying`），耗尽后才将 turn 置为失败。turn 持有 HistoryAccumulator 随事件流累积，在 `llm.retrying / llm.recovering / llm.request.retrying` 时 rollback 并重建累加器，`llm.done` 时 finish 出完整消息；usage 统计、trace、compaction、媒体降级均以插件/贡献点身份挂接在事件流上。
+请求生命周期：`generate` 收到 (config, content, control) → 调用方在每次 attempt 前把 `config.credentialProvider` 解析成带完整凭证的 model（machine 路径由 request actor 完成），请求因此始终携带新鲜凭证，而凭证刷新恢复（可恢复的 401 → `credentials.invalidate()`，以 `llm.recovering`（strategy 为 `credentials`）发出）在重发时自然重新解析（不经状态机的 direct 调用方——ping、generate、full compaction、媒体上传——通过 `runWithCredentialRecovery` / `streamWithCredentialRecovery` 共享同一套单次重试恢复） → requester 的 `prepare*Request` 函数将纯 format 阶段与 trait hooks 组合为协议 requestParams（format 将通用 Message[] 经 Pattern Rewriter 降低，trait 在其间调整 kwargs、转换消息、合并历史、转换 tools 并收尾 params） → `execute*Request` 经共享的 `protocol/stream.ts` 传输层调用官方 SDK（四个协议共用同一套 sink、事件映射与短路路径） → 流式 chunk 经无状态 parser 回调转换为 `llm.streaming.part / streaming.usage / streaming.finish / streaming.message_id` 事件 → 错误由 format 转换为 `llm.failed.*`；成功时 requester 发出 `llm.done`，失败时以 `llm.failed.syntax / llm.failed.remote` 收尾、不再发 `llm.done`。turn 在 `llm.done` 时经 `emptyResponseError` 判定空响应并重新转为 `llm.failed.remote`；turn machine 对 `llm.failed.remote` 先尝试恢复（由 engine 组装的策略链——可恢复 401 的凭证刷新在前、替换消息策略在后——经纯函数 `propose` 产出带不透明 `beforeNextAttempt` 副作用的记录，发 `llm.recovering`），再按策略 backoff 重试（尊重 Retry-After，发 `llm.retrying`），耗尽后才将 turn 置为失败。turn 持有 HistoryAccumulator 随事件流累积，在 `llm.retrying / llm.recovering / llm.request.retrying` 时 rollback 并重建累加器，`llm.done` 时 finish 出完整消息；usage 统计、trace、compaction、媒体降级均以插件/贡献点身份挂接在事件流上。
 
 ## 已被否决的方案（不要再引入）
 

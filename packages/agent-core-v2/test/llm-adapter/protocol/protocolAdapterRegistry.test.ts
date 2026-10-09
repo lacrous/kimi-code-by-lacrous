@@ -1,6 +1,11 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 import { isUnknownCapability } from '#/llm-adapter/contract/capability';
+import { createUserMessage } from '#human/llm/message';
+import type { LlmRequestEvent } from '#human/llm/requester/requester';
 import { thinkingMetadataOf } from '#human/llm/thinking';
 import type { Model } from '#/llm-adapter/model/catalog';
 import { ProtocolAdapterRegistry } from '#/llm-adapter/protocol/protocolAdapterRegistry';
@@ -15,9 +20,13 @@ import {
 const ENV_KEYS = [
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_BASE_URL',
   'KIMI_API_KEY',
   'KIMI_BASE_URL',
   'GOOGLE_API_KEY',
+  'GOOGLE_GEMINI_BASE_URL',
+  'GOOGLE_VERTEX_BASE_URL',
   'VERTEXAI_API_KEY',
 ] as const;
 
@@ -65,6 +74,7 @@ function modelWith(spec: {
   readonly providerOptions?: Model['providerOptions'];
   readonly reasoningKey?: string;
   readonly supportEfforts?: readonly string[];
+  readonly baseUrl?: string;
 }): Model {
   return {
     id: 'm1',
@@ -72,6 +82,7 @@ function modelWith(spec: {
     aliases: [],
     protocol: spec.protocol,
     headers: {},
+    baseUrl: spec.baseUrl,
     capabilities: {
       image_in: false,
       video_in: false,
@@ -88,6 +99,112 @@ function modelWith(spec: {
     supportEfforts: spec.supportEfforts,
     providerOptions: spec.providerOptions,
   };
+}
+
+function sse(events: readonly (readonly [string | undefined, unknown])[]): string {
+  return events
+    .map(([name, data]) => {
+      const label = name === undefined ? '' : `event: ${name}\n`;
+      return `${label}data: ${JSON.stringify(data)}\n\n`;
+    })
+    .join('');
+}
+
+const ANTHROPIC_STREAM = sse([
+  [
+    'message_start',
+    {
+      type: 'message_start',
+      message: {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        model: 'wire-model',
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+      },
+    },
+  ],
+  [
+    'content_block_start',
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+  ],
+  [
+    'content_block_delta',
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } },
+  ],
+  ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+  [
+    'message_delta',
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+  ],
+  ['message_stop', { type: 'message_stop' }],
+]);
+
+const GOOGLE_STREAM = sse([
+  [
+    undefined,
+    {
+      candidates: [{ content: { role: 'model', parts: [{ text: 'hi' }] }, finishReason: 'STOP' }],
+    },
+  ],
+]);
+
+async function withStubGateway(
+  run: (gateway: { readonly baseUrl: string; readonly paths: readonly string[] }) => Promise<void>,
+): Promise<void> {
+  const paths: string[] = [];
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    paths.push(req.url ?? '');
+    req.resume();
+    req.on('end', () => {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'close',
+      });
+      const isGemini = req.url?.includes('streamGenerateContent') === true;
+      res.end(isGemini ? GOOGLE_STREAM : ANTHROPIC_STREAM);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run({ baseUrl: `http://127.0.0.1:${port}`, paths });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error !== undefined) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+}
+
+interface DispatchResult {
+  readonly paths: readonly string[];
+  readonly events: readonly LlmRequestEvent[];
+}
+
+async function dispatch(model: Model): Promise<DispatchResult> {
+  const resolved = registry.resolve(model);
+  const events: LlmRequestEvent[] = [];
+  let paths: readonly string[] = [];
+  await withStubGateway(async (gateway) => {
+    paths = gateway.paths;
+    await resolved.requester.generate(
+      { model: { ...resolved.model, baseUrl: gateway.baseUrl } },
+      { messages: [createUserMessage('hi')] },
+      { signal: new AbortController().signal, onEvent: (event) => events.push(event) },
+    );
+  });
+  return { paths, events };
 }
 
 describe('supportedProtocols', () => {
@@ -194,6 +311,51 @@ describe('resolve gateway routes', () => {
       }),
     );
     expect(vertex.protocol).toBe('google-genai');
+  });
+
+  it('routes betaApi to the beta endpoint and its absence to the stable one', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test-key';
+    const beta = await dispatch(
+      modelWith({ protocol: 'anthropic', providerOptions: { betaApi: true } }),
+    );
+    const stable = await dispatch(modelWith({ protocol: 'anthropic' }));
+
+    expect(beta.paths).toEqual(['/v1/messages?beta=true']);
+    expect(stable.paths).toEqual(['/v1/messages']);
+    for (const { events } of [beta, stable]) {
+      expect(events.map((event) => event.type)).toContain('llm.sent');
+      expect(events.at(-1)).toEqual({ type: 'llm.done' });
+    }
+  });
+
+  it('routes vertexai to the vertex endpoint and its absence to the gemini one', async () => {
+    process.env['GOOGLE_API_KEY'] = 'gemini-key';
+    process.env['VERTEXAI_API_KEY'] = 'vertex-key';
+    const gemini = await dispatch(modelWith({ protocol: 'google-genai' }));
+    const vertex = await dispatch(
+      modelWith({ protocol: 'google-genai', providerOptions: { vertexai: true } }),
+    );
+
+    expect(gemini.paths).toEqual([
+      '/v1beta/models/wire-model:streamGenerateContent?alt=sse',
+    ]);
+    expect(vertex.paths).toEqual([
+      '/v1beta1/publishers/google/models/wire-model:streamGenerateContent?alt=sse',
+    ]);
+    for (const { events } of [gemini, vertex]) {
+      expect(events.map((event) => event.type)).toContain('llm.sent');
+      expect(events.at(-1)).toEqual({ type: 'llm.done' });
+    }
+  });
+
+  it('sends a kimi definition on its own protocol, never the beta endpoint', async () => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-test-key';
+    process.env['KIMI_API_KEY'] = 'sk-test-key';
+
+    const kimi = await dispatch(modelWith({ protocol: 'anthropic', providerType: 'kimi' }));
+    const plain = await dispatch(modelWith({ protocol: 'anthropic' }));
+
+    expect(kimi.paths).toEqual(plain.paths);
   });
 
   it('routes kimi+anthropic through the kimi anthropic trait with media', () => {
