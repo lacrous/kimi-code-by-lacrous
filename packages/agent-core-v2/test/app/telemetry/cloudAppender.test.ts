@@ -10,6 +10,7 @@ import {
 } from '#/_base/errors/unexpectedError';
 import { FileStorageService } from '#/persistence/backends/node-fs/fileStorageService';
 import { CloudAppender, type CloudAppenderOptions } from '#/app/telemetry/cloudAppender';
+import { REDACTED } from '#/human/credentials/redaction';
 
 import { stubBootstrap, stubClientIdentity } from '../bootstrap/stubs';
 
@@ -461,5 +462,44 @@ describe('CloudAppender', () => {
     } finally {
       resetUnexpectedErrorHandler();
     }
+  });
+
+  it('redacts secret-named and secret-shaped properties before sending', async () => {
+    const requests: CapturedRequest[] = [];
+    const appender = new CloudAppender(
+      baseOptions({
+        homeDir,
+        fetchImpl: makeFetch((req) => {
+          requests.push(req);
+          return okResponse();
+        }),
+      }),
+    );
+
+    appender.track({
+      event: 'evt',
+      context: {},
+      properties: {
+        api_key: 'plain-secret-value',
+        refresh_token: 'another-secret',
+        model_hint: 'sk-live-0123456789abcdefXYZ',
+        keep: 'yes',
+        attempts: 3,
+      },
+    });
+    await appender.flush();
+
+    const event = requests[0]?.body.events[0];
+    expect(event?.['property_api_key']).toBe(REDACTED);
+    expect(event?.['property_refresh_token']).toBe(REDACTED);
+    const masked = event?.['property_model_hint'];
+    expect(typeof masked).toBe('string');
+    expect(masked as string).toContain('****');
+    expect(masked as string).toContain('XYZ');
+    expect(masked as string).not.toContain('0123456789abcdef');
+    expect(event?.['property_keep']).toBe('yes');
+    expect(event?.['property_attempts']).toBe(3);
+    expect(JSON.stringify(requests[0]?.body)).not.toContain('plain-secret-value');
+    expect(JSON.stringify(requests[0]?.body)).not.toContain('another-secret');
   });
 });

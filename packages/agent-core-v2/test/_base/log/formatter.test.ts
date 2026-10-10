@@ -221,6 +221,35 @@ describe('formatter — auto-redact', () => {
     const json = JSON.stringify(out);
     expect(json).toContain('[REDACTED:depth]');
   });
+
+  it('redacts header-shaped and compound secret key names', () => {
+    const out = redactCtx({
+      headers: { 'X-Api-Key': 'abc', 'X-Trace': '1' },
+      dbPassword: 'def',
+      maxTokens: 100,
+    });
+    const headers = out['headers'] as Record<string, unknown>;
+    expect(headers['X-Api-Key']).toBe('[REDACTED]');
+    expect(headers['X-Trace']).toBe('1');
+    expect(out['dbPassword']).toBe('[REDACTED]');
+    expect(out['maxTokens']).toBe(100);
+  });
+
+  it('masks secret-looking values under unknown ctx keys', () => {
+    const { text } = formatEntry(baseEntry({ ctx: { note: 'used sk-abcdefghijklabcd today' } }));
+    expect(text).toContain('note="used sk-************abcd today"');
+    expect(text).not.toContain('efghij');
+  });
+
+  it('redacts secrets embedded in the message line', () => {
+    const { text } = formatEntry(
+      baseEntry({ msg: 'request failed access_token=abc123 cookie: sid=xyz789' }),
+    );
+    expect(text).toContain('access_token=[REDACTED]');
+    expect(text).toContain('cookie: [REDACTED]');
+    expect(text).not.toContain('abc123');
+    expect(text).not.toContain('xyz789');
+  });
 });
 
 describe('extractError', () => {

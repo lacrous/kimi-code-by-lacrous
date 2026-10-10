@@ -37,4 +37,18 @@ describe('ConsoleAppender', () => {
     appender.track({ event: 'evt', context: {}, properties: { a: 1 } });
     expect(lines[0]).toContain('\n');
   });
+
+  it('redacts secret properties and masks secret-looking values', () => {
+    const lines: string[] = [];
+    const appender = new ConsoleAppender({ log: (message) => lines.push(message) });
+    appender.track({
+      event: 'tool.call',
+      context: {},
+      properties: { api_key: 'sk-abcdefghijklabcd', note: 'used sk-abcdefghijklabcd', name: 'bash' },
+    });
+    expect(lines[0]).toContain('"api_key":"[REDACTED]"');
+    expect(lines[0]).toContain('"note":"used sk-************abcd"');
+    expect(lines[0]).toContain('"name":"bash"');
+    expect(lines[0]).not.toContain('efghij');
+  });
 });

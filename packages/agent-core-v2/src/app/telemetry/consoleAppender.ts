@@ -1,3 +1,5 @@
+import { redactSecrets } from '#/human/credentials/redaction';
+
 import type { ITelemetryAppender, TelemetryAppenderRecord } from './telemetry';
 import type { TelemetryProperties } from './context';
 
@@ -24,7 +26,7 @@ export class ConsoleAppender implements ITelemetryAppender {
     const payload =
       Object.keys(record.properties).length === 0
         ? ''
-        : ` ${stringifyProperties(record.properties, this.pretty)}`;
+        : ` ${stringifyProperties(redactSecrets(record.properties) as TelemetryProperties, this.pretty)}`;
     this.log(`${this.prefix} ${record.event}${payload}`);
   }
 }

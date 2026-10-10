@@ -4,6 +4,7 @@ import { release } from 'node:os';
 import type { ServicesAccessor } from '#/_base/di/instantiation';
 import { onUnexpectedError } from '#/_base/errors/unexpectedError';
 import { IBootstrapService } from '#/app/bootstrap/bootstrap';
+import { redactSecrets } from '#/human/credentials/redaction';
 import { IFileSystemStorageService } from '#/persistence/interface/storage';
 
 import type { ITelemetryAppender, TelemetryAppenderRecord } from './telemetry';
@@ -107,7 +108,9 @@ export class CloudAppender implements ITelemetryAppender {
         typeof ambientSessionId === 'string' ? ambientSessionId : this.sessionId,
       event: record.event,
       timestamp: Date.now() / 1000,
-      properties: cleanTelemetryProperties(sanitizeProperties(record.properties)),
+      properties: cleanTelemetryProperties(
+        redactSecrets(sanitizeProperties(record.properties)) as CloudProperties,
+      ),
       context: this.envelopeContext(record.context),
     };
     this.buffer.push(enriched);

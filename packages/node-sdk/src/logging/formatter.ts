@@ -6,21 +6,49 @@ export const STACK_MAX_BYTES = 2048;
 export const ENTRY_MAX_BYTES = 4096;
 export const REDACT_MAX_DEPTH = 10;
 
+const MASK_CHAR = '*';
+const VISIBLE_TAIL_CHARS = 4;
+
 const REDACTED_KEYS: ReadonlySet<string> = new Set([
   'authorization',
+  'proxyauthorization',
   'apikey',
-  'token',
-  'refreshtoken',
-  'accesstoken',
-  'idtoken',
-  'password',
-  'secret',
-  'clientsecret',
+  'xapikey',
   'apisecret',
+  'secretkey',
+  'clientsecret',
+  'privatekey',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'authtoken',
+  'sessiontoken',
+  'password',
+  'passwd',
+  'secret',
+  'credential',
+  'credentials',
   'cookie',
   'setcookie',
   'bearer',
 ]);
+
+const REDACTED_KEY_SUFFIXES: readonly string[] = [
+  'apikey',
+  'authorization',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'authtoken',
+  'sessiontoken',
+  'clientsecret',
+  'apisecret',
+  'secretkey',
+  'privatekey',
+  'password',
+  'cookie',
+];
 
 const SAFE_KEY_RE = /^[\w.-]+$/;
 const ELLIPSIS = '…';
@@ -28,9 +56,25 @@ const TRUNCATED_TAIL = ` …truncated`;
 const REDACTED = '[REDACTED]';
 const RAW_SECRET_PATTERNS: readonly RegExp[] = [
   /\b(authorization\s*[:=]\s*bearer\s+)[^\s"'`]+/gi,
-  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|secret)\s*[:=]\s*)[^\s"'`]+/gi,
+  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|secret|client[_-]?secret)\s*[:=]\s*)[^\s"'`]+/gi,
   /\b(cookie\s*[:=]\s*)[^\r\n]+/gi,
 ];
+
+const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
+  /\b((?:sk|pk|ak|xai)-)([A-Za-z0-9_-]{16,})/g,
+  /\b((?:gh[pousr]|gsk)_)([A-Za-z0-9]{16,})/g,
+  /\b(github_pat_)([A-Za-z0-9_]{16,})/g,
+  /\b(xox[baprs]-)([A-Za-z0-9-]{10,})/g,
+  /\b(AIza)([A-Za-z0-9_-]{20,})/g,
+  /\b(eyJ)([A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{5,})/g,
+];
+
+const BEARER_VALUE_PATTERN = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi;
+
+function maskSecretValue(value: string): string {
+  const hidden = Math.max(value.length - VISIBLE_TAIL_CHARS, 0);
+  return MASK_CHAR.repeat(hidden) + value.slice(-VISIBLE_TAIL_CHARS);
+}
 
 const LEVEL_LABEL: Record<Exclude<LogEntry['level'], never>, string> = {
   error: 'ERROR',
@@ -43,10 +87,17 @@ function normalizeKey(key: string): string {
   return key.toLowerCase().replaceAll(/[_\-.]/g, '');
 }
 
+function isSecretKey(key: string): boolean {
+  const normalized = normalizeKey(key);
+  return REDACTED_KEYS.has(normalized)
+    || REDACTED_KEY_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+}
+
 export function redactCtx(ctx: LogContext): LogContext {
   const seen = new WeakSet<object>();
   const walk = (value: unknown, depth: number): unknown => {
     if (depth > REDACT_MAX_DEPTH) return '[REDACTED:depth]';
+    if (typeof value === 'string') return redactString(value);
     if (value === null || typeof value !== 'object') return value;
     if (seen.has(value)) return '[REDACTED:cycle]';
     seen.add(value);
@@ -55,7 +106,7 @@ export function redactCtx(ctx: LogContext): LogContext {
     }
     const out: Record<string, unknown> = {};
     for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = REDACTED_KEYS.has(normalizeKey(key))
+      out[key] = isSecretKey(key)
         ? REDACTED
         : walk(raw, depth + 1);
     }
@@ -99,7 +150,16 @@ function redactString(value: string): string {
   for (const pattern of RAW_SECRET_PATTERNS) {
     out = out.replace(pattern, `$1${REDACTED}`);
   }
-  return out;
+  for (const pattern of SECRET_VALUE_PATTERNS) {
+    out = out.replace(
+      pattern,
+      (_match, prefix: string, secret: string) => `${prefix}${maskSecretValue(secret)}`,
+    );
+  }
+  return out.replace(
+    BEARER_VALUE_PATTERN,
+    (_match, prefix: string, secret: string) => `${prefix}${maskSecretValue(secret)}`,
+  );
 }
 
 function quote(value: string): string {
@@ -145,7 +205,7 @@ function indentStack(stack: string): string {
 
 export function formatEntry(entry: LogEntry): FormattedEntry {
   const ctx = entry.ctx ? redactCtx(entry.ctx) : undefined;
-  const msg = truncate(entry.msg, MSG_MAX_CHARS);
+  const msg = truncate(redactString(entry.msg), MSG_MAX_CHARS);
   const pairs: string[] = [];
   if (ctx) {
     for (const [k, v] of Object.entries(ctx)) {

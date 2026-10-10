@@ -1,36 +1,20 @@
+import {
+  REDACT_MAX_DEPTH,
+  redactSecretString,
+  redactSecrets,
+} from '#/human/credentials/redaction';
+
 import type { LogContext, LogEntry, LogEntryError } from './log';
 
 export const MSG_MAX_CHARS = 200;
 export const CTX_VALUE_MAX_CHARS = 2048;
 export const STACK_MAX_BYTES = 2048;
 export const ENTRY_MAX_BYTES = 4096;
-export const REDACT_MAX_DEPTH = 10;
-
-const REDACTED_KEYS: ReadonlySet<string> = new Set([
-  'authorization',
-  'apikey',
-  'token',
-  'refreshtoken',
-  'accesstoken',
-  'idtoken',
-  'password',
-  'secret',
-  'clientsecret',
-  'apisecret',
-  'cookie',
-  'setcookie',
-  'bearer',
-]);
+export { REDACT_MAX_DEPTH };
 
 const SAFE_KEY_RE = /^[\w.-]+$/;
 const ELLIPSIS = '…';
 const TRUNCATED_TAIL = ` …truncated`;
-const REDACTED = '[REDACTED]';
-const RAW_SECRET_PATTERNS: readonly RegExp[] = [
-  /\b(authorization\s*[:=]\s*bearer\s+)[^\s"'`]+/gi,
-  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|secret)\s*[:=]\s*)[^\s"'`]+/gi,
-  /\b(cookie\s*[:=]\s*)[^\r\n]+/gi,
-];
 
 const LEVEL_LABEL: Record<Exclude<LogEntry['level'], never>, string> = {
   error: 'ERROR',
@@ -47,27 +31,8 @@ const ANSI_LEVEL: Record<Exclude<LogEntry['level'], never>, string> = {
 };
 const ANSI_RESET = '[0m';
 
-function normalizeKey(key: string): string {
-  return key.toLowerCase().replaceAll(/[_\-.]/g, '');
-}
-
 export function redactCtx(ctx: LogContext): LogContext {
-  const seen = new WeakSet<object>();
-  const walk = (value: unknown, depth: number): unknown => {
-    if (depth > REDACT_MAX_DEPTH) return '[REDACTED:depth]';
-    if (value === null || typeof value !== 'object') return value;
-    if (seen.has(value)) return '[REDACTED:cycle]';
-    seen.add(value);
-    if (Array.isArray(value)) {
-      return value.map((item) => walk(item, depth + 1));
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = REDACTED_KEYS.has(normalizeKey(key)) ? REDACTED : walk(raw, depth + 1);
-    }
-    return out;
-  };
-  return walk(ctx, 0) as LogContext;
+  return redactSecrets(ctx) as LogContext;
 }
 
 export interface FormatOptions {
@@ -85,7 +50,7 @@ function truncate(value: string, max: number): string {
 }
 
 function serializeValue(raw: unknown): string {
-  if (typeof raw === 'string') return redactString(raw);
+  if (typeof raw === 'string') return redactSecretString(raw);
   if (raw === undefined) return 'undefined';
   if (raw === null) return 'null';
   if (
@@ -103,14 +68,6 @@ function serializeValue(raw: unknown): string {
   }
   if (typeof raw === 'function') return raw.name === '' ? '[Function]' : `[Function: ${raw.name}]`;
   return Object.prototype.toString.call(raw);
-}
-
-function redactString(value: string): string {
-  let out = value;
-  for (const pattern of RAW_SECRET_PATTERNS) {
-    out = out.replace(pattern, `$1${REDACTED}`);
-  }
-  return out;
 }
 
 function quote(value: string): string {
@@ -157,7 +114,7 @@ function indentStack(stack: string): string {
 export function formatEntry(entry: LogEntry, options: FormatOptions = {}): FormattedEntry {
   const ctx = entry.ctx ? redactCtx(entry.ctx) : undefined;
   const omitContextKeys = new Set(options.omitContextKeys ?? []);
-  const msg = truncate(entry.msg, MSG_MAX_CHARS);
+  const msg = truncate(redactSecretString(entry.msg), MSG_MAX_CHARS);
   const pairs: string[] = [];
   if (ctx) {
     for (const [k, v] of Object.entries(ctx)) {
@@ -181,9 +138,9 @@ export function formatEntry(entry: LogEntry, options: FormatOptions = {}): Forma
   }
 
   if (entry.error?.stack) {
-    head = `${head}\n${indentStack(clipStack(redactString(entry.error.stack)))}`;
+    head = `${head}\n${indentStack(clipStack(redactSecretString(entry.error.stack)))}`;
   } else if (entry.error?.message) {
-    head = `${head}\n  Error: ${redactString(entry.error.message)}`;
+    head = `${head}\n  Error: ${redactSecretString(entry.error.message)}`;
   }
 
   return { text: head, dropped: false };
