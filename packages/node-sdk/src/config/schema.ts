@@ -53,7 +53,7 @@ const StringRecordSchema = z.record(z.string(), z.string());
 
 export const ProviderAuthSchemeSchema = z
   .object({
-    kind: z.enum(['custom-header', 'none']),
+    kind: z.enum(['bearer', 'custom-header', 'none']),
     header: z.string().min(1).optional(),
   })
   .refine((scheme) => scheme.kind !== 'custom-header' || scheme.header !== undefined, {

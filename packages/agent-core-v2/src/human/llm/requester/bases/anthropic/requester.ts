@@ -11,6 +11,10 @@ import { applyThinking } from '#/llm/protocol/thinking';
 import { resolveMaxCompletionCap, type FormatRequestInput } from '#/llm/protocol/format';
 import { consumeStream, resolveTransportHeaders } from '#/llm/protocol/stream';
 import {
+  applyAuthScheme,
+  suppressDefaultAuthHeaders,
+} from '#/llm/requester/auth-strategy';
+import {
   type LlmClientContext,
   type LlmRequestConfig,
   type LlmRequestContent,
@@ -69,8 +73,19 @@ function anthropicCustomHeaderEnvNames(): string[] {
   return names;
 }
 
+const ANTHROPIC_AUTH_HEADERS: readonly string[] = ['authorization', 'x-api-key'];
+
+function lowerHeaders(
+  headers: Readonly<Record<string, string | null>>,
+): Record<string, string | null> {
+  const next: Record<string, string | null> = {};
+  for (const [name, value] of Object.entries(headers)) next[name.toLowerCase()] = value;
+  return next;
+}
+
 function buildDefaultHeaders(
   headers: Record<string, string> | undefined,
+  model: LlmModel,
 ): Record<string, string | null> {
   const defaultHeaders: Record<string, string | null> = { authorization: null };
   for (const name of anthropicCustomHeaderEnvNames()) {
@@ -79,6 +94,9 @@ function buildDefaultHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     defaultHeaders[name.toLowerCase()] = value;
   }
+  if (model.authScheme === undefined) return defaultHeaders;
+  Object.assign(defaultHeaders, lowerHeaders(suppressDefaultAuthHeaders(ANTHROPIC_AUTH_HEADERS)));
+  Object.assign(defaultHeaders, lowerHeaders(applyAuthScheme(model) ?? {}));
   return defaultHeaders;
 }
 
@@ -87,7 +105,7 @@ function createClient(model: LlmModel, headers: Record<string, string> | undefin
     apiKey: model.apiKey ?? 'unused',
     authToken: null,
     baseURL: model.baseUrl ?? null,
-    defaultHeaders: buildDefaultHeaders(headers),
+    defaultHeaders: buildDefaultHeaders(headers, model),
     maxRetries: 0,
   });
 }

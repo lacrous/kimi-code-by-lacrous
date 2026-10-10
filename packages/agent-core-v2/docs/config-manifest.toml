@@ -346,7 +346,7 @@ merge_all_available_skills = true
     # key: string
     # oauth_host: string
   # auth_scheme: object
-    # kind: "custom-header" | "none"
+    # kind: "bearer" | "custom-header" | "none"
     # header: string
   # env: record<string, string>
   # source: record<string, any>

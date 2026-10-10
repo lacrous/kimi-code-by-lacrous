@@ -25,7 +25,7 @@ const modelSourceSchema = z.enum(['static', 'discover', 'oauth-catalog']);
 
 const providerAuthSchemeSchema = z
   .object({
-    kind: z.enum(['custom-header', 'none']),
+    kind: z.enum(['bearer', 'custom-header', 'none']),
     header: z.string().min(1).optional(),
   })
   .refine((scheme) => scheme.kind !== 'custom-header' || scheme.header !== undefined, {

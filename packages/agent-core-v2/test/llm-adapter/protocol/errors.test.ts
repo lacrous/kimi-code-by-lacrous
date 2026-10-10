@@ -13,6 +13,8 @@ import {
   createAbortError,
 } from '#/llm-adapter/contract/errors';
 import {
+  AuthError2,
+  authErrorKindFor,
   ProtocolErrors,
   sanitizeStatusErrorMessage,
   translateProviderError,
@@ -40,6 +42,87 @@ describe('ProtocolErrors domain', () => {
     }
     expect(errorInfo('provider.rate_limit').retryable).toBe(true);
     expect(errorInfo('provider.filtered').title).toBe('Provider filtered response');
+  });
+});
+
+const AUTH_KINDS = [
+  ['not_authenticated', ProtocolErrors.codes.AUTH_NOT_AUTHENTICATED],
+  ['auth_failed', ProtocolErrors.codes.AUTH_FAILED],
+  ['expired', ProtocolErrors.codes.AUTH_EXPIRED],
+  ['refresh_failed', ProtocolErrors.codes.AUTH_REFRESH_FAILED],
+  ['credential_not_found', ProtocolErrors.codes.CREDENTIAL_NOT_FOUND],
+  ['credential_invalid', ProtocolErrors.codes.CREDENTIAL_INVALID],
+  ['authorization_denied', ProtocolErrors.codes.AUTHORIZATION_DENIED],
+] as const;
+
+describe('auth error taxonomy', () => {
+  it('registers every auth kind as a non-retryable provider code', () => {
+    expect(AUTH_KINDS.map(([, code]) => code)).toEqual([
+      'provider.auth_not_authenticated',
+      'provider.auth_failed',
+      'provider.auth_expired',
+      'provider.auth_refresh_failed',
+      'provider.credential_not_found',
+      'provider.credential_invalid',
+      'provider.authorization_denied',
+    ]);
+    for (const [kind, code] of AUTH_KINDS) {
+      expect(isErrorCode(code)).toBe(true);
+      expect(code).not.toBe('provider.auth_error');
+      expect(errorInfo(code).retryable).toBe(false);
+      expect(errorInfo(code).title.length).toBeGreaterThan(0);
+      expect(errorInfo(code).action?.length ?? 0).toBeGreaterThan(0);
+      expect(Object.values(ProtocolErrors.codes)).toContain(code);
+    }
+  });
+
+  it('builds an AuthError2 whose code, kind and details agree', () => {
+    for (const [kind, code] of AUTH_KINDS) {
+      const error = new AuthError2(kind, 'boom', { details: { provider: 'standard' } });
+      expect(error).toBeInstanceOf(Error2);
+      expect(error.code).toBe(code);
+      expect(error.authKind).toBe(kind);
+      expect(error.name).toBe('AuthError2');
+      expect(error.message).toBe('boom');
+      expect(error.details).toEqual({ provider: 'standard', authKind: kind });
+      expect(authErrorKindFor(error)).toBe(kind);
+      expect(translateProviderError(error)).toBe(error);
+    }
+  });
+
+  it('classifies provider status errors by auth kind', () => {
+    expect(authErrorKindFor(new APIStatusError(401, 'invalid api key'))).toBe('auth_failed');
+    expect(authErrorKindFor(new APIStatusError(403, 'forbidden'))).toBe('authorization_denied');
+    expect(authErrorKindFor(new APIStatusError(401, 'The access token has expired'))).toBe(
+      'expired',
+    );
+    expect(authErrorKindFor(new APIStatusError(401, 'refresh token is invalid_grant'))).toBe(
+      'refresh_failed',
+    );
+    expect(
+      authErrorKindFor(new APIStatusError(403, 'expired refresh token')),
+    ).toBe('refresh_failed');
+  });
+
+  it('reads the status off plain provider-shaped objects', () => {
+    expect(authErrorKindFor({ status: 401, message: 'no' })).toBe('auth_failed');
+    expect(authErrorKindFor({ statusCode: 403, message: 'no' })).toBe('authorization_denied');
+  });
+
+  it('leaves api, model and network failures outside the taxonomy', () => {
+    expect(authErrorKindFor(new APIStatusError(429, 'too many requests'))).toBeUndefined();
+    expect(authErrorKindFor(new APIStatusError(500, 'boom'))).toBeUndefined();
+    expect(authErrorKindFor(new APIConnectionError('down'))).toBeUndefined();
+    expect(authErrorKindFor(new ChatProviderError('weird'))).toBeUndefined();
+    expect(authErrorKindFor(new Error('boom'))).toBeUndefined();
+    expect(authErrorKindFor('boom')).toBeUndefined();
+    expect(authErrorKindFor(new Error2('config.invalid', 'missing api key'))).toBeUndefined();
+  });
+
+  it('keeps provider.auth_error as the code for status auth failures', () => {
+    const expired = new APIStatusError(401, 'The access token has expired');
+    expect(translateProviderError(expired).code).toBe('provider.auth_error');
+    expect(authErrorKindFor(expired)).toBe('expired');
   });
 });
 

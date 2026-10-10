@@ -37,7 +37,7 @@ export const OAuthRefSchema = z.object({
 
 export const ModelSourceSchema = z.enum(['static', 'discover', 'oauth-catalog']);
 
-export const ProviderAuthSchemeKindSchema = z.enum(['custom-header', 'none']);
+export const ProviderAuthSchemeKindSchema = z.enum(['bearer', 'custom-header', 'none']);
 
 export const ProviderAuthSchemeSchema = z
   .object({
