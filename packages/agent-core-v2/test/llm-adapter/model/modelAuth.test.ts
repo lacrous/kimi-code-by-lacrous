@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { ConfigErrors } from '#/app/config/errors';
+import {
+  assertProviderBaseUrl,
+  checkProviderBaseUrl,
+} from '#/llm-adapter/provider/base-url';
 import type { ProviderConfig } from '#/llm-adapter/provider/provider';
 import type { ModelRecord } from '#/llm-adapter/model/model';
 import {
   deriveProviderId,
   effectiveModelConfig,
+  resolveEndpointBaseUrl,
   resolveModelAuthMaterial,
   resolveModelForReady,
 } from '#/llm-adapter/model/model-auth';
@@ -164,6 +169,203 @@ describe('deriveProviderId', () => {
   it('keys flat providers by the baseUrl origin', () => {
     expect(deriveProviderId('https://api.example.test/v1')).toBe('api.example.test');
     expect(deriveProviderId('not-a-url')).toBe('not-a-url');
+  });
+});
+
+const BUILT_IN_PROVIDER_BASE_URLS: readonly string[] = [
+  'https://api.cline.bot/api/v1',
+  'https://openrouter.ai/api/v1',
+  'https://opencode.ai/zen/v1',
+  'https://opencode.ai/zen/go/v1',
+  'https://integrate.api.nvidia.com/v1',
+  'https://router.bynara.id/v1',
+  'https://tokenharbor.ai/v1',
+  'https://api.openai.com/v1',
+  'https://api.anthropic.com',
+  'https://generativelanguage.googleapis.com/v1beta',
+  'https://api.x.ai/v1',
+  'https://api.groq.com/openai/v1',
+  'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  'https://api.minimax.io/v1',
+  'https://api.deepseek.com',
+  'https://api.mistral.ai/v1',
+  'https://router.huggingface.co/v1',
+  'https://api.moonshot.ai/v1',
+];
+
+describe('checkProviderBaseUrl', () => {
+  it('accepts every built-in provider base URL', () => {
+    for (const baseUrl of BUILT_IN_PROVIDER_BASE_URLS) {
+      expect(checkProviderBaseUrl(baseUrl)).toEqual({ ok: true, baseUrl });
+    }
+  });
+
+  it('accepts a valid URL and trims surrounding whitespace', () => {
+    expect(checkProviderBaseUrl('  https://api.example.test/v1  ')).toEqual({
+      ok: true,
+      baseUrl: 'https://api.example.test/v1',
+    });
+  });
+
+  it('rejects an empty value', () => {
+    expect(checkProviderBaseUrl('   ')).toEqual({ ok: false, reason: 'cannot be empty.' });
+  });
+
+  it('rejects embedded credentials so a pasted key cannot ride along in the URL', () => {
+    expect(checkProviderBaseUrl('https://user:pass@api.example.test/v1')).toEqual({
+      ok: false,
+      reason:
+        'must not embed a username or password; put the key in api_key instead.',
+    });
+    expect(checkProviderBaseUrl('https://sk-secret@api.example.test/v1')).toEqual({
+      ok: false,
+      reason:
+        'must not embed a username or password; put the key in api_key instead.',
+    });
+  });
+
+  it('rejects a malformed URL', () => {
+    expect(checkProviderBaseUrl('api.example.test/v1')).toEqual({
+      ok: false,
+      reason: '"api.example.test/v1" is not a valid URL.',
+    });
+  });
+
+  it('rejects a non-http(s) scheme', () => {
+    expect(checkProviderBaseUrl('ftp://api.example.test/v1')).toEqual({
+      ok: false,
+      reason: 'must be http(s), got "ftp:".',
+    });
+    expect(checkProviderBaseUrl('file:///etc/passwd')).toEqual({
+      ok: false,
+      reason: 'must be http(s), got "file:".',
+    });
+  });
+
+  it('rejects plain http for a non-local host', () => {
+    expect(checkProviderBaseUrl('http://api.example.test/v1')).toEqual({
+      ok: false,
+      reason:
+        'must use https for a non-local host; plain http is only allowed for loopback and private-network hosts such as localhost, 127.0.0.1 or 192.168.x.x.',
+    });
+  });
+
+  it('accepts plain http for a local model server', () => {
+    for (const baseUrl of [
+      'http://localhost:11434/v1',
+      'http://localhost/v1',
+      'http://127.0.0.1:8000/v1',
+      'http://[::1]:1234/v1',
+      'http://models.localhost/v1',
+    ]) {
+      expect(checkProviderBaseUrl(baseUrl)).toEqual({ ok: true, baseUrl });
+    }
+  });
+
+  it('accepts plain http for a self-hosted gateway on a private address', () => {
+    for (const baseUrl of [
+      'http://192.168.1.50:8000/v1',
+      'http://10.0.0.7:1234/v1',
+      'http://172.16.4.2:8080/v1',
+      'http://169.254.10.10:11434/v1',
+      'http://0.0.0.0:8000/v1',
+      'http://[fd00::1]:8000/v1',
+      'http://[fe80::1]:8000/v1',
+    ]) {
+      expect(checkProviderBaseUrl(baseUrl)).toEqual({ ok: true, baseUrl });
+    }
+  });
+
+  it('still rejects plain http for an address just outside the private range', () => {
+    for (const baseUrl of ['http://172.32.4.2:8080/v1', 'http://11.0.0.1:8080/v1', 'http://192.169.1.1:8080/v1']) {
+      expect(checkProviderBaseUrl(baseUrl)).toEqual({
+        ok: false,
+        reason:
+          'must use https for a non-local host; plain http is only allowed for loopback and private-network hosts such as localhost, 127.0.0.1 or 192.168.x.x.',
+      });
+    }
+  });
+});
+
+describe('assertProviderBaseUrl', () => {
+  it('throws config.invalid naming the offending field and the reason', () => {
+    expect(() => assertProviderBaseUrl('http://api.example.test/v1', 'providers.acme.base_url')).toThrowError(
+      expect.objectContaining({
+        code: ConfigErrors.codes.CONFIG_INVALID,
+        message:
+          'providers.acme.base_url must use https for a non-local host; plain http is only allowed for loopback and private-network hosts such as localhost, 127.0.0.1 or 192.168.x.x.',
+      }),
+    );
+  });
+});
+
+describe('resolveEndpointBaseUrl', () => {
+  function baseUrlOf(model: ModelRecord, provider: ProviderConfig): string | undefined {
+    return resolveEndpointBaseUrl({ model, provider, modelId: 'm1', providerId: 'prov-a' });
+  }
+
+  it('prefers the model base URL over the provider one', () => {
+    expect(
+      baseUrlOf(
+        { model: 'm', baseUrl: 'https://model.example.test/v1' },
+        { type: 'openai', baseUrl: 'https://provider.example.test/v1' },
+      ),
+    ).toBe('https://model.example.test/v1');
+  });
+
+  it('falls back to the provider base URL and then to the vendor endpoint env bag', () => {
+    expect(
+      baseUrlOf({ model: 'm' }, { type: 'openai', baseUrl: 'https://provider.example.test/v1' }),
+    ).toBe('https://provider.example.test/v1');
+    expect(baseUrlOf({ model: 'm' }, { type: 'openai', env: { OPENAI_BASE_URL: 'https://env.example.test/v1' } })).toBe(
+      'https://env.example.test/v1',
+    );
+    expect(baseUrlOf({ model: 'm' }, { type: 'kimi' })).toBe('https://api.moonshot.ai/v1');
+    expect(baseUrlOf({ model: 'm' }, { type: 'openai' })).toBeUndefined();
+  });
+
+  it('keeps a local http endpoint reachable', () => {
+    expect(
+      baseUrlOf({ model: 'm' }, { type: 'openai', baseUrl: 'http://localhost:11434/v1' }),
+    ).toBe('http://localhost:11434/v1');
+    expect(
+      baseUrlOf({ model: 'm' }, { type: 'openai', env: { OPENAI_BASE_URL: 'http://127.0.0.1:8000/v1' } }),
+    ).toBe('http://127.0.0.1:8000/v1');
+  });
+
+  it('rejects a model base URL naming models.<id>.base_url', () => {
+    expect(() =>
+      baseUrlOf({ model: 'm', baseUrl: 'https://user:pass@model.example.test/v1' }, { type: 'openai' }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: ConfigErrors.codes.CONFIG_INVALID,
+        message:
+          'models.m1.base_url must not embed a username or password; put the key in api_key instead.',
+      }),
+    );
+  });
+
+  it('rejects a provider base URL naming providers.<id>.base_url', () => {
+    expect(() =>
+      baseUrlOf({ model: 'm' }, { type: 'openai', baseUrl: 'http://gateway.example.test/v1' }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: ConfigErrors.codes.CONFIG_INVALID,
+        message:
+          'providers.prov-a.base_url must use https for a non-local host; plain http is only allowed for loopback and private-network hosts such as localhost, 127.0.0.1 or 192.168.x.x.',
+      }),
+    );
+  });
+
+  it('rejects a base URL coming from the provider env bag, naming the env key', () => {
+    expect(() =>
+      baseUrlOf({ model: 'm' }, { type: 'openai', env: { OPENAI_BASE_URL: 'ftp://gateway.example.test' } }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: ConfigErrors.codes.CONFIG_INVALID,
+        message: 'providers.prov-a.env.OPENAI_BASE_URL must be http(s), got "ftp:".',
+      }),
+    );
   });
 });
 

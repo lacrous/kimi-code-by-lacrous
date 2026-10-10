@@ -11,6 +11,7 @@ import {
 
 import { CONFIG_INVALID_ERROR_CODE } from '../contract/errors';
 import { ProtocolSchema, type Protocol } from '../protocol/protocol';
+import { assertProviderBaseUrl } from '../provider/base-url';
 import type { ProviderConfig } from '../provider/provider';
 import { explainProviderEndpoint, getProviderDefinition } from '../provider/provider-definition';
 
@@ -160,22 +161,35 @@ export function resolveModelProtocol(
   return undefined;
 }
 
-export function resolveEndpointBaseUrl(
-  model: ModelRecord,
-  provider: ProviderConfig,
-): string | undefined {
-  const fromModel = nonEmpty(model.baseUrl);
+export function resolveEndpointBaseUrl(args: {
+  readonly model: ModelRecord;
+  readonly provider: ProviderConfig;
+  readonly modelId: string;
+  readonly providerId: string;
+}): string | undefined {
+  const fromModel = nonEmpty(args.model.baseUrl);
   if (fromModel !== undefined) {
-    return fromModel;
+    return assertProviderBaseUrl(fromModel, `models.${args.modelId}.base_url`);
   }
-  const fromProvider = nonEmpty(provider.baseUrl);
+  const fromProvider = nonEmpty(args.provider.baseUrl);
   if (fromProvider !== undefined) {
-    return fromProvider;
+    return assertProviderBaseUrl(fromProvider, `providers.${args.providerId}.base_url`);
   }
-  const endpointType = provider.type ?? model.protocol;
+  const endpointType = args.provider.type ?? args.model.protocol;
   const endpoint =
-    endpointType === undefined ? {} : explainProviderEndpoint(endpointType, provider.env ?? {});
-  return nonEmpty(endpoint.baseUrl);
+    endpointType === undefined
+      ? {}
+      : explainProviderEndpoint(endpointType, args.provider.env ?? {});
+  const fromEndpoint = nonEmpty(endpoint.baseUrl);
+  if (fromEndpoint === undefined) {
+    return undefined;
+  }
+  return assertProviderBaseUrl(
+    fromEndpoint,
+    endpoint.baseUrlEnvName === undefined
+      ? `providers.${args.providerId} default endpoint`
+      : `providers.${args.providerId}.env.${endpoint.baseUrlEnvName}`,
+  );
 }
 
 export type ModelReadyFailureReason =

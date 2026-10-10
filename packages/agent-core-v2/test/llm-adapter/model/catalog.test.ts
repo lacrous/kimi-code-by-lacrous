@@ -560,6 +560,61 @@ describe('Model assembly (pure data)', () => {
   });
 });
 
+describe('base_url validation', () => {
+  it('rejects a plain-http non-local provider base_url as config.invalid', () => {
+    const { host, catalog } = createHost({
+      providers: { acme: { type: 'openai', apiKey: 'sk-a', baseUrl: 'http://acme.example.test/v1' } },
+      models: { m: { provider: 'acme', model: 'acme-1', maxContextSize: 1000 } },
+    });
+    try {
+      expect(() => catalog.get('m')).toThrowError(
+        expect.objectContaining({
+          code: ConfigErrors.codes.CONFIG_INVALID,
+          message:
+            'providers.acme.base_url must use https for a non-local host; plain http is only allowed for loopback and private-network hosts such as localhost, 127.0.0.1 or 192.168.x.x.',
+        }),
+      );
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('rejects credentials embedded in a providerless model base_url as config.invalid', () => {
+    const { host, catalog } = createHost({
+      models: {
+        m: {
+          baseUrl: 'https://user:sk-secret@acme.example.test/v1',
+          model: 'acme-1',
+          maxContextSize: 1000,
+        },
+      },
+    });
+    try {
+      expect(() => catalog.get('m')).toThrowError(
+        expect.objectContaining({
+          code: ConfigErrors.codes.CONFIG_INVALID,
+          message:
+            'models.m.base_url must not embed a username or password; put the key in api_key instead.',
+        }),
+      );
+    } finally {
+      host.dispose();
+    }
+  });
+
+  it('keeps a local model server on plain http reachable', () => {
+    const { host, catalog } = createHost({
+      providers: { ollama: { type: 'openai', apiKey: 'sk-a', baseUrl: 'http://localhost:11434/v1' } },
+      models: { m: { provider: 'ollama', model: 'llama3', maxContextSize: 8192 } },
+    });
+    try {
+      expect(catalog.get('m').baseUrl).toBe('http://localhost:11434/v1');
+    } finally {
+      host.dispose();
+    }
+  });
+});
+
 describe('ModelCatalog caching and config-event invalidation', () => {
   it('caches per id; getRequester returns the cached pair', () => {
     const { host, catalog } = createHost(kimiSections);
@@ -648,7 +703,7 @@ describe('headers merge order', () => {
 });
 
 describe('provider auth_scheme', () => {
-  it('routes auth_scheme into providerOptions for the OpenAI wires and nowhere else', () => {
+  it('routes auth_scheme into providerOptions for every wire that can carry it', () => {
     const { host, catalog } = createHost({
       providers: {
         gateway: {
@@ -658,11 +713,13 @@ describe('provider auth_scheme', () => {
           authScheme: { kind: 'custom-header', header: 'x-api-key' },
         },
         responses: { type: 'openai_responses', apiKey: 'sk-r', authScheme: { kind: 'none' } },
+        claude: { type: 'anthropic', apiKey: 'sk-c', authScheme: { kind: 'bearer' } },
         plain: { type: 'openai', apiKey: 'sk-p', baseUrl: 'https://plain.example.test/v1' },
       },
       models: {
         gw: { provider: 'gateway', model: 'gw-1', maxContextSize: 1000 },
         rs: { provider: 'responses', model: 'gw-1', maxContextSize: 1000 },
+        cl: { provider: 'claude', model: 'cl-1', maxContextSize: 1000 },
         pl: { provider: 'plain', model: 'gw-1', maxContextSize: 1000 },
       },
     });
@@ -671,6 +728,7 @@ describe('provider auth_scheme', () => {
         authScheme: { kind: 'custom-header', header: 'x-api-key' },
       });
       expect(catalog.get('rs').providerOptions).toEqual({ authScheme: { kind: 'none' } });
+      expect(catalog.get('cl').providerOptions).toEqual({ authScheme: { kind: 'bearer' } });
       expect(catalog.get('pl').providerOptions).toBeUndefined();
     } finally {
       host.dispose();
@@ -693,7 +751,6 @@ describe('provider auth_scheme', () => {
         host.dispose();
       }
     };
-    expectInvalid('anthropic');
     expectInvalid('google-genai');
   });
 });
@@ -747,6 +804,33 @@ describe('resolveAuthSchemeHeaders', () => {
       resolveAuthSchemeHeaders(schemeModel({ kind: 'custom-header', header: 'x-api-key' }), HOST),
     ).toEqual({ 'User-Agent': 'kimi-test/1.0', Authorization: null });
   });
+
+  it('restates the default bearer token for an explicit bearer scheme', () => {
+    expect(resolveAuthSchemeHeaders(schemeModel({ kind: 'bearer' }, 'sk-1'), HOST)).toEqual({
+      'User-Agent': 'kimi-test/1.0',
+      Authorization: 'Bearer sk-1',
+    });
+  });
+
+  it('honours a custom header name for an explicit bearer scheme', () => {
+    expect(
+      resolveAuthSchemeHeaders(schemeModel({ kind: 'bearer', header: 'x-token' }, 'sk-1'), HOST),
+    ).toEqual({ 'User-Agent': 'kimi-test/1.0', Authorization: null, 'x-token': 'Bearer sk-1' });
+  });
+
+  it('sends no bearer token when a bearer scheme has no key to send', () => {
+    expect(resolveAuthSchemeHeaders(schemeModel({ kind: 'bearer' }), HOST)).toEqual({
+      'User-Agent': 'kimi-test/1.0',
+      Authorization: null,
+    });
+  });
+
+  it('fails loudly when a kind reaches the requester without a registered strategy', () => {
+    const unregistered = { kind: 'oauth2' } as unknown as LlmAuthScheme;
+    expect(() => resolveAuthSchemeHeaders(schemeModel(unregistered, 'sk-1'), HOST)).toThrow(
+      'No auth strategy is registered for kind "oauth2"',
+    );
+  });
 });
 
 describe('auth_scheme on the wire', () => {
@@ -757,11 +841,13 @@ describe('auth_scheme on the wire', () => {
   interface WireStub {
     readonly type: string;
     readonly chunks: string;
+    readonly defaultAuth: readonly [header: string, value: string];
   }
 
   const WIRES: WireStub[] = [
     {
       type: 'openai',
+      defaultAuth: ['authorization', 'Bearer sk-wire'],
       chunks: [
         sse([
           'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":0,"model":"m-1","choices":[{"index":0,"delta":{"role":"assistant","content":"pong"},"finish_reason":null}]}',
@@ -774,6 +860,7 @@ describe('auth_scheme on the wire', () => {
     },
     {
       type: 'openai_responses',
+      defaultAuth: ['authorization', 'Bearer sk-wire'],
       chunks: [
         sse([
           'event: response.output_text.delta',
@@ -784,6 +871,30 @@ describe('auth_scheme on the wire', () => {
           'data: {"type":"response.completed","response":{"id":"resp-1","status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}',
         ]),
         sse(['event: done', 'data: [DONE]']),
+      ].join(''),
+    },
+    {
+      type: 'anthropic',
+      defaultAuth: ['x-api-key', 'sk-wire'],
+      chunks: [
+        sse([
+          'event: message_start',
+          'data: {"type":"message_start","message":{"id":"msg-1","type":"message","role":"assistant","model":"m-1","content":[],"stop_reason":null,"usage":{"input_tokens":1,"output_tokens":0}}}',
+        ]),
+        sse([
+          'event: content_block_start',
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+        ]),
+        sse([
+          'event: content_block_delta',
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"pong"}}',
+        ]),
+        sse(['event: content_block_stop', 'data: {"type":"content_block_stop","index":0}']),
+        sse([
+          'event: message_delta',
+          'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+        ]),
+        sse(['event: message_stop', 'data: {"type":"message_stop"}']),
       ].join(''),
     },
   ];
@@ -827,25 +938,37 @@ describe('auth_scheme on the wire', () => {
     }
   }
 
-  it.each(WIRES)('$type sends no Authorization header at all for an anonymous provider', async (
-    wire,
-  ) => {
-    expect((await pingAndCapture({ kind: 'none' }, wire))['authorization']).toBeUndefined();
+  it.each(WIRES)('$type sends no credential at all for an anonymous provider', async (wire) => {
+    const headers = await pingAndCapture({ kind: 'none' }, wire);
+    expect(headers['authorization']).toBeUndefined();
+    expect(headers[wire.defaultAuth[0]]).toBeUndefined();
   });
 
   it.each(WIRES)(
-    '$type sends the key in the named header and no Authorization for a custom-header provider',
+    '$type sends the key in the named header and no default credential for a custom-header provider',
     async (wire) => {
-      const headers = await pingAndCapture({ kind: 'custom-header', header: 'x-api-key' }, wire);
+      const headers = await pingAndCapture({ kind: 'custom-header', header: 'x-gateway-key' }, wire);
       expect(headers['authorization']).toBeUndefined();
-      expect(headers['x-api-key']).toBe('sk-wire');
+      expect(headers[wire.defaultAuth[0]]).toBeUndefined();
+      expect(headers['x-gateway-key']).toBe('sk-wire');
     },
   );
 
   it.each(WIRES)(
-    '$type still sends the default bearer token when the provider declares no scheme',
+    '$type still sends the default credential when the provider declares no scheme',
     async (wire) => {
-      expect((await pingAndCapture(undefined, wire))['authorization']).toBe('Bearer sk-wire');
+      expect((await pingAndCapture(undefined, wire))[wire.defaultAuth[0]]).toBe(wire.defaultAuth[1]);
+    },
+  );
+
+  it.each(WIRES)(
+    '$type sends an explicit bearer scheme even when the wire defaults elsewhere',
+    async (wire) => {
+      const headers = await pingAndCapture({ kind: 'bearer' }, wire);
+      expect(headers['authorization']).toBe('Bearer sk-wire');
+      if (wire.defaultAuth[0] !== 'authorization') {
+        expect(headers[wire.defaultAuth[0]]).toBeUndefined();
+      }
     },
   );
 });

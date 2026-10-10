@@ -24,6 +24,7 @@ import {
   type Protocol,
   type ProtocolProviderOptions,
 } from '../protocol/protocol';
+import { assertProviderBaseUrl } from '../provider/base-url';
 import { IProviderService } from '../provider/provider';
 import {
   getProviderDefinition,
@@ -423,17 +424,23 @@ export class ModelCatalog extends Disposable implements IModelCatalog {
       return {
         providerConfig,
         providerName: providerId,
-        resolvedBaseUrl: resolveEndpointBaseUrl(model, providerConfig),
+        resolvedBaseUrl: resolveEndpointBaseUrl({
+          model,
+          provider: providerConfig,
+          modelId: id,
+          providerId,
+        }),
       };
     }
 
-    const modelBaseUrl = nonEmpty(model.baseUrl);
-    if (modelBaseUrl === undefined) {
+    const configuredBaseUrl = nonEmpty(model.baseUrl);
+    if (configuredBaseUrl === undefined) {
       throw new Error2(
         CONFIG_INVALID_ERROR_CODE,
         `Model "${id}" must set either providerId or baseUrl in config.toml.`,
       );
     }
+    const modelBaseUrl = assertProviderBaseUrl(configuredBaseUrl, `models.${id}.base_url`);
     return {
       providerConfig: undefined,
       providerName: deriveProviderId(modelBaseUrl),
@@ -562,6 +569,7 @@ function buildProtocolProviderOptions(
       if (model.supportEfforts !== undefined) options.supportEfforts = model.supportEfforts;
       if (model.adaptiveThinking !== undefined) options.adaptiveThinking = model.adaptiveThinking;
       if (model.betaApi !== undefined) options.betaApi = model.betaApi;
+      if (authScheme !== undefined) options.authScheme = authScheme;
       break;
     case 'openai': {
       const reasoningKey = nonEmpty(model.reasoningKey);
@@ -597,6 +605,8 @@ function buildProtocolProviderOptions(
     : undefined;
 }
 
+const AUTH_SCHEME_PROTOCOLS: readonly Protocol[] = new Set(['openai', 'openai_responses', 'anthropic']);
+
 function supportedAuthScheme(
   model: ModelRecord,
   protocol: Protocol,
@@ -604,10 +614,10 @@ function supportedAuthScheme(
 ): LlmAuthScheme | undefined {
   const scheme = provider?.authScheme;
   if (scheme === undefined) return undefined;
-  if (protocol === 'openai' || protocol === 'openai_responses') return scheme;
+  if (AUTH_SCHEME_PROTOCOLS.has(protocol)) return scheme;
   throw new Error2(
     CONFIG_INVALID_ERROR_CODE,
-    `Provider "${model.providerId ?? model.provider ?? model.name ?? ''}" sets auth_scheme "${scheme.kind}", which the ${protocol} API does not support. auth_scheme is only available for providers using the openai or openai_responses protocol.`,
+    `Provider "${model.providerId ?? model.provider ?? model.name ?? ''}" sets auth_scheme "${scheme.kind}", which the ${protocol} API does not support. auth_scheme is only available for providers using the openai, openai_responses or anthropic protocol.`,
   );
 }
 
