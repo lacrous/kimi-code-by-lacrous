@@ -1,5 +1,11 @@
 # @lacrous/kimi-code
 
+## 3.6.0
+
+### Minor Changes
+
+- [`6efbd06`](https://github.com/lacrous/kimi-code-by-lacrous/commit/6efbd06e548629764248c760c1f1a4c969cbefbe) Thanks [@lacrous](https://github.com/lacrous)! - Add an authentication selector to the custom-provider dialog, so a custom endpoint can use a Bearer token, API key (x-api-key), a custom header, or no credential; the API key auth scheme kind is also available on `kimi provider add-manual`, `kimi provider edit`, and `kimi provider auth`.
+
 ## 3.5.0
 
 ### Minor Changes
