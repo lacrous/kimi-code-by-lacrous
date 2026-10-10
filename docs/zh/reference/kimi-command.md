@@ -198,7 +198,7 @@ kimi web --port 58628    # 指定绑定端口
 
 ### `kimi app`
 
-打开 Kimi Code 桌面端，在当前目录或指定目录中开始新会话：
+打开 Lacrous Kimi Code 桌面端，在当前目录或指定目录中开始新会话：
 
 ```sh
 kimi app

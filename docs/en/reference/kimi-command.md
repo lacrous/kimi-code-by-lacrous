@@ -198,7 +198,7 @@ Generate a new persistent bearer token (written to `~/.kimi-code/server.token`);
 
 ### `kimi app`
 
-Open Kimi Code desktop and start a new chat in the current directory or a specified directory:
+Open Lacrous Kimi Code desktop and start a new chat in the current directory or a specified directory:
 
 ```sh
 kimi app

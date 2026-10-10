@@ -1,5 +1,5 @@
 ---
-"@moonshot-ai/kimi-code": patch
+"@lacrous/kimi-code": patch
 ---
 
 Feedback surveys now appear less often.
