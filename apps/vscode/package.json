@@ -3,7 +3,7 @@
   "publisher": "moonshot-ai",
   "displayName": "Lacrous Kimi Code",
   "description": "Official Lacrous Kimi Code plugin for VS Code",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",

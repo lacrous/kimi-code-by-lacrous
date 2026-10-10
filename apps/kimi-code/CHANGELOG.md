@@ -1,5 +1,39 @@
 # @lacrous/kimi-code
 
+## 3.5.0
+
+### Minor Changes
+
+- [`dd4865c`](https://github.com/lacrous/kimi-code-by-lacrous/commit/dd4865cc60e650f8b49d7d4601a152ebc386a934) Thanks [@lacrous](https://github.com/lacrous)! - Add `kimi auth list|status|login|logout|refresh` to check whether a provider is signed in and manage its credential, with the key read from the terminal so it never lands in shell history.
+
+- [#4145](https://github.com/MoonshotAI/kimi-code/pull/4145) [`242ac23`](https://github.com/lacrous/kimi-code-by-lacrous/commit/242ac230006447f8601e1678c49182bfbae89fe9) Thanks [@wbxl2000](https://github.com/wbxl2000)! - Add `kimi app [path]` to open a new desktop chat in the current or specified directory.
+
+- [`d74be4d`](https://github.com/lacrous/kimi-code-by-lacrous/commit/d74be4d7f7383bd1205edf63e497889a61b96bac) Thanks [@lacrous](https://github.com/lacrous)! - Stop accepting a plaintext `http://` provider base URL unless the host is the local machine or a private network; a remote HTTP provider can no longer be added without `KIMI_CODE_ALLOW_INSECURE_PROVIDER_HTTP=1`.
+
+- [`6601b9a`](https://github.com/lacrous/kimi-code-by-lacrous/commit/6601b9ad2dc87970a4c363aa2e12ba8f83934442) Thanks [@lacrous](https://github.com/lacrous)! - Add `kimi provider auth <id>` to replace a provider's credential without touching its protocol or endpoint.
+
+- [`2e24749`](https://github.com/lacrous/kimi-code-by-lacrous/commit/2e2474932f78fa2b3365330a99b6c13a6db6bb26) Thanks [@lacrous](https://github.com/lacrous)! - Add `kimi provider models <id>` to list a provider's configured models, show what its endpoint advertises, or refresh the list.
+
+### Patch Changes
+
+- [#4154](https://github.com/MoonshotAI/kimi-code/pull/4154) [`419aced`](https://github.com/lacrous/kimi-code-by-lacrous/commit/419aced0e97fa04b75f8f71b089e1667f6de6d0a) Thanks [@7Sageer](https://github.com/7Sageer)! - Fix media file reading on the first turn after resuming a session.
+
+- [#4152](https://github.com/MoonshotAI/kimi-code/pull/4152) [`f0bc988`](https://github.com/lacrous/kimi-code-by-lacrous/commit/f0bc988bbc7db08d650f37ae0eaa69bcc6e90696) Thanks [@7Sageer](https://github.com/7Sageer)! - Forked subagents now inherit the parent's available agent types, including custom agents.
+
+- [#4153](https://github.com/MoonshotAI/kimi-code/pull/4153) [`7091138`](https://github.com/lacrous/kimi-code-by-lacrous/commit/7091138f5e66289d04b9b7a5cd77f94af9308be3) Thanks [@RealKai42](https://github.com/RealKai42)! - Let the agent write one- or two-sentence progress notes between tool calls instead of bare status lines; in the experimental Updates panel (`KIMI_CODE_EXPERIMENTAL_NOTIFY_USER=1`), stop asking the agent to repost its mid-turn text as an update and remind it to post updates less often.
+
+- [`d74be4d`](https://github.com/lacrous/kimi-code-by-lacrous/commit/d74be4d7f7383bd1205edf63e497889a61b96bac) Thanks [@lacrous](https://github.com/lacrous)! - Fix `kimi auth login`, `kimi auth logout` and `kimi provider auth` reporting success while leaving the previous credential in the configuration.
+
+- [`d74be4d`](https://github.com/lacrous/kimi-code-by-lacrous/commit/d74be4d7f7383bd1205edf63e497889a61b96bac) Thanks [@lacrous](https://github.com/lacrous)! - Mask API keys, tokens and credential headers in `kimi provider list --json` output instead of printing them in full.
+
+- [#2919](https://github.com/MoonshotAI/kimi-code/pull/2919) [`0f052fe`](https://github.com/lacrous/kimi-code-by-lacrous/commit/0f052fee1399f34086bb6343a56867d7df9b70b5) Thanks [@duyphan154](https://github.com/duyphan154)! - Sanitize foreground Bash tool output so captured terminal escape sequences no longer change the host terminal state.
+
+- [#4164](https://github.com/MoonshotAI/kimi-code/pull/4164) [`3395f5b`](https://github.com/lacrous/kimi-code-by-lacrous/commit/3395f5bea6c77feb6a835d1ca3f4935970f96c6b) Thanks [@huangzheng2016](https://github.com/huangzheng2016)! - Show a "Shutting down" status hint while shutdown hooks run during exit, and let a Ctrl+C during that window force an immediate exit instead of waiting for the hook timeout.
+
+- [#4033](https://github.com/MoonshotAI/kimi-code/pull/4033) [`eec9bbd`](https://github.com/lacrous/kimi-code-by-lacrous/commit/eec9bbd94958248034f5dbf109a639970308f05e) Thanks [@Grapedge](https://github.com/Grapedge)! - Feedback surveys now appear less often.
+
+- [#4160](https://github.com/MoonshotAI/kimi-code/pull/4160) [`72fc1d0`](https://github.com/lacrous/kimi-code-by-lacrous/commit/72fc1d0a3375b2a87dff602a1d91726a99f360e0) Thanks [@kimi-agent-bot](https://github.com/kimi-agent-bot)! - Show "Working…" in the status spinner while thinking.
+
 ## 3.4.0
 
 ### Minor Changes
