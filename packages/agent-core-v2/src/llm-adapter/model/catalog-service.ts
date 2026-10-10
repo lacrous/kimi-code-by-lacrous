@@ -605,7 +605,11 @@ function buildProtocolProviderOptions(
     : undefined;
 }
 
-const AUTH_SCHEME_PROTOCOLS: readonly Protocol[] = new Set(['openai', 'openai_responses', 'anthropic']);
+const AUTH_SCHEME_PROTOCOLS: ReadonlySet<Protocol> = new Set<Protocol>([
+  'openai',
+  'openai_responses',
+  'anthropic',
+]);
 
 function supportedAuthScheme(
   model: ModelRecord,
