@@ -79,6 +79,7 @@ const config = withMermaid(defineConfig({
               items: [
                 { text: '配置文件', link: '/zh/configuration/config-files' },
                 { text: '平台与模型', link: '/zh/configuration/providers' },
+                { text: '认证与凭证', link: '/zh/configuration/authentication' },
                 { text: '配置覆盖', link: '/zh/configuration/overrides' },
                 { text: '环境变量', link: '/zh/configuration/env-vars' },
                 { text: '数据路径', link: '/zh/configuration/data-locations' },
@@ -158,6 +159,7 @@ const config = withMermaid(defineConfig({
               items: [
                 { text: 'Config Files', link: '/en/configuration/config-files' },
                 { text: 'Providers and Models', link: '/en/configuration/providers' },
+                { text: 'Authentication and Credentials', link: '/en/configuration/authentication' },
                 { text: 'Config Overrides', link: '/en/configuration/overrides' },
                 { text: 'Environment Variables', link: '/en/configuration/env-vars' },
                 { text: 'Data Locations', link: '/en/configuration/data-locations' },

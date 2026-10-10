@@ -8,14 +8,20 @@ After typing the full command name, press `Enter` to execute. If the `/`-prefixe
 Some commands are only available in the idle state. Executing these commands while a session is streaming output or compacting context will be blocked — press `Esc` or `Ctrl-C` to interrupt first. The "Always available" column in the tables below indicates commands that are also available during streaming.
 :::
 
+::: warning Experimental flags
+`/tower` and `/restore` are gated behind experimental flags that are off by default. Enable them with `/experiments` in the TUI, with `KIMI_CODE_EXPERIMENTAL_TOWER=1` and `KIMI_CODE_EXPERIMENTAL_FILE_RESTORE=1` in the environment, or with `tower = true` and `file_restore = true` under `[experimental]` in `config.toml`. `KIMI_CODE_EXPERIMENTAL_FLAG=1` enables every experimental feature at once. See [Environment variables](../configuration/env-vars.md#runtime-switches).
+:::
+
 ## Account & Configuration
 
 | Command | Alias | Description | Always available |
 | --- | --- | --- | --- |
 | `/login` | — | Select an account or platform and log in: Lacrous Kimi Code uses OAuth device-code flow; Kimi Platform uses API key login | No |
-| `/logout` | — | Clear credentials for the currently selected account | No |
-| `/provider` | — | Open the interactive provider manager to view, add, and remove configured providers. See [Platforms & Models — `/provider` and provider management](../configuration/providers.md#provider-—-interactive-provider-management) | Yes |
+| `/logout` | `/disconnect` | Clear credentials for the currently selected account | No |
+| `/provider` | `/providers` | Open the interactive provider manager to view, add, edit, and remove configured providers. See [Providers and models — `/provider`](../configuration/providers.md#provider-—-interactive-provider-management) | Yes |
 | `/model` | — | Switch the LLM model used in the current session | Yes |
+| `/context [<model>] [tokens\|reset]` | `/ctx` | Change how many tokens a model may fill before compaction kicks in. Accepts `200000`, `200k`, or `1M`; `reset` restores the value declared in `config.toml`. Writes `models.<alias>.overrides.max_context_size`. See [Model overrides](../configuration/config-files.md#model-overrides) | Yes |
+| `/effort` | `/thinking` | Switch the thinking effort level for models that support extended thinking | Yes |
 | `/secondary-model` | `/subagent-model` | Pick the default model for subagents (writes `[secondary_model] default_model`; see the [subagent model pool](../configuration/config-files.md#subagent-model-pool)) | Yes |
 | `/settings` | `/config` | Open the settings panel inside the TUI | Yes |
 | `/experiments` | `/experimental` | Open the experimental feature panel | Yes |
@@ -34,6 +40,7 @@ Some commands are only available in the idle state. Executing these commands whi
 | `/title [<text>]` | `/rename` | Without arguments, display the current session title; with an argument, set a new title (max 200 characters) | Yes |
 | `/compact [<instruction>]` | — | Compact the current conversation context to free up token usage; an optional custom instruction can hint to the model what to preserve | No |
 | `/undo [<count>]` | — | Undo recent prompts from the active context. Without a count, opens a selector; with a count, undoes that many prompts. Prompts before the last compaction cannot be undone. Undoing also rolls back the todo list and plan mode state produced by those prompts (code changes are not reverted) | No |
+| `/restore [<turn>] [--force]` | — | Put files back the way they were at the start of an earlier turn, instead of only reporting what changed. Requires the `file_restore` experimental flag | No |
 | `/reload` | — | Reload the current session and apply the latest `config.toml` settings (providers, models, etc.) and `tui.toml` UI preferences, without restarting the CLI | No |
 | `/reload-tui` | — | Reload only the `tui.toml` UI preferences (theme, editor, notifications, etc.) without rebuilding the session | Yes |
 | `/init` | — | Analyze the current codebase and generate `AGENTS.md` | No |
@@ -42,6 +49,7 @@ Some commands are only available in the idle state. Executing these commands whi
 | `/copy` | — | Copy the last assistant message to the clipboard | No |
 | `/add-dir [<path>]` | — | Add an extra workspace directory to the current session. Run without a path (or with `list`) to list configured directories. When adding, choose whether to remember the directory for the project in `.kimi-code/local.toml` | No |
 | `/web` | — | Open the current session in the web UI: pick a running server to connect to, or start a new foreground server after the TUI exits. See [`kimi web`](./kimi-command.md#kimi-web) | Yes |
+| `/remote-control` | `/rc` | Open the current session through Kimi Remote Control. See [Remote Control](../guides/remote-control.md) | Yes |
 | `/desktop` | `/install-desktop` | Open the Lacrous Kimi Code desktop app page in your browser (URL follows the active region: `https://www.kimi.com/code` or `https://www.kimi.ai/code`). See [`kimi install-desktop`](./kimi-command.md#kimi-install-desktop) | Yes |
 
 ## Modes & Run Control
@@ -54,6 +62,7 @@ Some commands are only available in the idle state. Executing these commands whi
 | `/plan clear` | — | Clear the current plan | No |
 | `/swarm on\|off` | — | Turn swarm mode on or off without sending a prompt. | Yes |
 | `/swarm <task>` | — | Turn swarm mode on, then send `<task>` as a normal prompt. If the turn completes normally, swarm mode turns off automatically. In `manual` permission mode, Lacrous Kimi Code asks whether to switch to Ask When Needed or Never Ask mode before starting. | No |
+| `/tower [status\|teardown\|on\|off\|<base-branch>]` | — | Report tower status, toggle tower mode (multiple agents working toward one shared objective), or turn it on with a base branch. Requires the `tower` experimental flag | Yes |
 | `/goal [...]` | — | Start or manage an autonomous goal | See below |
 
 ::: warning

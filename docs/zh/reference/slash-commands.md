@@ -8,14 +8,20 @@
 部分命令仅在空闲（idle）状态下可用。会话正在流式输出或压缩上下文时执行这些命令会被拦截，需先按 `Esc` 或 `Ctrl-C` 中断。下表「随时可用」列标注了流式输出期间也可用的命令。
 :::
 
+::: warning 注意
+`/tower` 和 `/restore` 受默认关闭的实验开关控制。可在 TUI 中用 `/experiments` 启用，也可设置环境变量 `KIMI_CODE_EXPERIMENTAL_TOWER=1` 和 `KIMI_CODE_EXPERIMENTAL_FILE_RESTORE=1`，或在 `config.toml` 的 `[experimental]` 下写 `tower = true` 和 `file_restore = true`。总开关 `KIMI_CODE_EXPERIMENTAL_FLAG=1` 会一次启用全部实验功能。详见[环境变量](../configuration/env-vars.md#运行时开关)。
+:::
+
 ## 账号与配置
 
 | 命令 | 别名 | 说明 | 随时可用 |
 | --- | --- | --- | --- |
 | `/login` | — | 选择账号或平台并登录：Lacrous Kimi Code 走 OAuth 验证码流程，Kimi Platform 通过 API 密钥登录 | 否 |
-| `/logout` | — | 清除当前所选账号的凭据 | 否 |
-| `/provider` | — | 打开交互式供应商管理器，查看、添加和删除已配置的供应商。详见[平台与模型 — `/provider` 与供应商管理](../configuration/providers.md#provider-—-交互式供应商管理) | 是 |
+| `/logout` | `/disconnect` | 清除当前所选账号的凭据 | 否 |
+| `/provider` | `/providers` | 打开交互式供应商管理器，查看、添加、编辑和删除已配置的供应商。详见[平台与模型 — `/provider`](../configuration/providers.md#provider-—-交互式供应商管理) | 是 |
 | `/model` | — | 切换当前会话使用的 LLM 模型 | 是 |
+| `/context [<model>] [tokens\|reset]` | `/ctx` | 调整模型在触发上下文压缩前最多可填入的 token 数。可传 `200000`、`200k` 或 `1M`；传 `reset` 恢复 `config.toml` 中声明的值。该值写入 `models.<alias>.overrides.max_context_size`。详见[模型覆盖项](../configuration/config-files.md#模型覆盖项) | 是 |
+| `/effort` | `/thinking` | 为支持扩展思考的模型切换 Thinking 档位 | 是 |
 | `/secondary-model` | `/subagent-model` | 选择 subagent 的默认模型（写入 `[secondary_model] default_model`，详见[subagent 模型池](../configuration/config-files.md#subagent-模型池)） | 是 |
 | `/settings` | `/config` | 打开 TUI 内的设置面板 | 是 |
 | `/experiments` | `/experimental` | 打开实验功能面板 | 是 |
@@ -34,12 +40,16 @@
 | `/title [<text>]` | `/rename` | 不带参数时显示当前会话标题；带参数时设置为新标题（最长 200 字符） | 是 |
 | `/compact [<instruction>]` | — | 压缩当前对话上下文，释放 token 占用；可附带自定义指令，提示模型压缩时保留哪些信息 | 否 |
 | `/undo [<count>]` | — | 从当前上下文撤销最近的提示词。不带数量时打开选择器；带数量时撤销对应条数。最后一次上下文压缩之前的提示词不能撤销。撤销会一并回滚这些提示词产生的 todo 列表和计划模式状态（不回滚代码改动） | 否 |
+| `/restore [<turn>] [--force]` | — | 把文件还原回较早某个轮次开始时的样子，而不只是列出改动内容。需要 `file_restore` 实验开关 | 否 |
+| `/reload` | — | 重新加载当前会话，无需重启 CLI 即可应用最新的 `config.toml` 配置（供应商、模型等）和 `tui.toml` 界面偏好 | 否 |
+| `/reload-tui` | — | 只重新加载 `tui.toml` 界面偏好（主题、编辑器、通知等），不重建会话 | 是 |
 | `/init` | — | 分析当前代码库并生成 `AGENTS.md` | 否 |
 | `/export-md [<path>]` | `/export` | 将当前会话导出为 Markdown 文件 | 否 |
 | `/export-debug-zip` | — | 将当前会话导出为调试用 ZIP 压缩包（与 [`kimi export`](./kimi-command.md#kimi-export) 行为一致） | 否 |
 | `/copy` | — | 将最后一条 AI 回复复制到剪贴板 | 否 |
 | `/add-dir [<path>]` | — | 为当前会话添加额外的工作目录。不带路径（或传入 `list`）运行时列出已配置的目录。添加时可选择是否将目录记入项目的 `.kimi-code/local.toml` | 否 |
 | `/web` | — | 在 web UI 中打开当前会话：选择一个运行中的实例进行连接，或在 TUI 退出后新开一个前台服务器。参见 [`kimi web`](./kimi-command.md#kimi-web) | 是 |
+| `/remote-control` | `/rc` | 通过 Kimi Remote Control 打开当前会话。详见 [Remote Control](../guides/remote-control.md) | 是 |
 | `/desktop` | `/install-desktop` | 在浏览器中打开 Lacrous Kimi Code 桌面端页面（地址随当前区域而定：`https://www.kimi.com/code` 或 `https://www.kimi.ai/code`）。参见 [`kimi install-desktop`](./kimi-command.md#kimi-install-desktop) | 是 |
 
 ## 模式与运行控制
@@ -52,6 +62,7 @@
 | `/plan clear` | — | 清除当前 plan 方案 | 否 |
 | `/swarm on\|off` | — | 开启或关闭 swarm mode，但不发送提示词。 | 是 |
 | `/swarm <task>` | — | 先开启 swarm mode，再把 `<task>` 作为普通提示词发送。如果该轮次正常完成，swarm mode 会自动关闭。若当前是 `manual` 权限模式，启动前会提示是否切换到 "Ask When Needed" 或 "Never Ask" 模式。 | 否 |
+| `/tower [status\|teardown\|on\|off\|<base-branch>]` | — | 查看 tower 状态、开关 tower 模式（多个 Agent 协同推进同一个目标），或带上基准分支直接开启。需要 `tower` 实验开关 | 是 |
 | `/goal [...]` | — | 开始或管理目标模式 | 见下文 |
 
 ::: warning 注意

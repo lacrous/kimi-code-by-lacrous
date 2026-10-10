@@ -47,6 +47,42 @@ Lacrous Kimi Code CLI 支持同时接入多家模型供应商服务，模型在�
 
 非交互环境下也可以用 shell 命令完成同样操作：[`kimi provider`](../reference/kimi-command.md#kimi-provider)。
 
+## 内置供应商
+
+`/provider` 管理器的 "Known third-party provider" 路径会拉取公共模型目录再做适配，适用于目录中已经收录的厂商。对于下面这些厂商，CLI 已把端点、协议和密钥前缀都内置为数据，即使拉不到目录，你也能直接按 id 添加：
+
+```sh
+kimi provider add-builtin <providerId>
+```
+
+这条命令会替你写好一整条供应商配置——协议、`base_url` 以及你在提示中输入的 API 密钥——随后刷新它的模型列表。完成之后它就是一个普通供应商：可以像其他供应商一样修改、更换密钥或删除。
+
+| Id | 名称 | 协议 | 密钥前缀 | 可接入的服务 |
+| --- | --- | --- | --- | --- |
+| `cline` | Cline | OpenAI 兼容 | — | 一把密钥接入 Anthropic、OpenAI、Google 等 |
+| `openrouter` | OpenRouter | OpenAI 兼容 | — | 一把密钥调用多家供应商的 400+ 个模型 |
+| `opencode-zen` | OpenCode Zen | OpenAI 兼容 | — | OpenCode 团队实测过的精选模型 |
+| `opencode-go` | OpenCode Go | OpenAI 兼容 | — | Go 套餐下的 OpenCode Zen 模型 |
+| `nvidia` | NVIDIA | OpenAI 兼容 | `nvapi-` | NVIDIA 托管的开放模型，开发者层级免费 |
+| `nara` | NaraRouter | OpenAI 兼容 | `sk-nry-` | 价格实惠的多模型网关 |
+| `tokenharbor` | Token Harbor | OpenAI 兼容 | `thk_live_` | 一把通用密钥接入多家 AI 供应商 |
+| `openai` | OpenAI | OpenAI 兼容 | `sk-` | GPT、o 系列和 Codex 模型 |
+| `anthropic` | Anthropic | Anthropic Messages | `sk-ant-` | Claude 模型 |
+| `gemini` | Google Gemini | Google GenAI | `AIza` | Gemini 模型 |
+| `grok` | xAI Grok | OpenAI 兼容 | `xai-` | Grok 模型 |
+| `groq` | Groq | OpenAI 兼容 | `gsk_` | 跑在 Groq 硬件上的高速开放模型 |
+| `qwen` | Qwen | OpenAI 兼容 | `sk-` | 阿里巴巴 Qwen 模型 |
+| `minimax` | MiniMax | OpenAI 兼容 | — | MiniMax 模型 |
+| `deepseek` | DeepSeek | OpenAI 兼容 | `sk-` | DeepSeek 对话与推理模型 |
+| `mistral` | Mistral | OpenAI 兼容 | — | Mistral 与 Magistral 模型 |
+| `huggingface` | Hugging Face | OpenAI 兼容 | `hf_` | 经 Hugging Face 路由访问的开放模型 |
+
+密钥前缀只是提示里展示的参考，不是校验规则——厂商可能不打招呼就改前缀，而拒绝一把本来可用的密钥，比不显示任何提示更糟糕。
+
+表格里还有两条情况没有写全。`anthropic` 和 `gemini` 都不接受 `Bearer` 请求头，因此 `add-builtin` 会为它们分别写入各自所需的 `auth_scheme`；在那里带上 `Bearer` 会返回 401，看起来和密钥失效一模一样。`opencode-zen` 在 OpenAI 兼容的 `/models` 接口上列出 Claude 模型，实际却通过 Anthropic Messages API 提供服务，因此这条配置把 `claude-*` 固定到该协议上——不固定的话，这些模型能列出来，一用就失败。
+
+这些端点具体如何接收密钥，详见 [身份验证与凭证](./authentication.md)。
+
 ## `kimi`
 
 用于对接 Moonshot AI 的 OpenAI 兼容接口，包括 Lacrous Kimi Code 托管服务和 Kimi Platform API 密钥。
@@ -185,6 +221,9 @@ kimi
 
 如需让 Vertex 请求走自定义（如代理）端点，可设置 `base_url`（或 `GOOGLE_VERTEX_BASE_URL` 环境变量）；不填时使用 SDK 默认的区域化 `*-aiplatform.googleapis.com` 地址。与 `google-genai` 一样，只填主机根地址。SDK 会自行追加 `/v1beta1/publishers/google/models/…`。
 
+## OAuth 与凭证注入
+
+Lacrous Kimi Code 托管服务使用 OAuth 而不是静态 API 密钥。执行 `/login` 之后，内置的认证工具链会自动写入并刷新凭证，因此这一部分无需在 `config.toml` 里做任何手动配置。
 
 ## 下一步
 

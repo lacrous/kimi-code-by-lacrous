@@ -47,6 +47,42 @@ Lacrous Kimi Code OAuth managed accounts logged in via `/login` do not appear in
 
 The same operations are also available in non-interactive environments via the shell command: [`kimi provider`](../reference/kimi-command.md#kimi-provider).
 
+## Built-in providers
+
+The `/provider` manager's "known third-party provider" path fetches a public catalog and adapts it, which works for vendors the catalog describes. For the vendors below, the CLI ships the endpoint, protocol, and key prefix as data, so you can add one by id without the catalog being reachable:
+
+```sh
+kimi provider add-builtin <providerId>
+```
+
+This writes a complete provider entry for you — protocol, `base_url`, and the API key you enter at the prompt — then refreshes its model list. Afterwards it is an ordinary provider: edit it, re-key it, or delete it like any other.
+
+| Id | Name | Protocol | Key prefix | What it serves |
+| --- | --- | --- | --- | --- |
+| `cline` | Cline | OpenAI-compatible | — | One key for Anthropic, OpenAI, Google and more |
+| `openrouter` | OpenRouter | OpenAI-compatible | — | One key for 400+ models across many providers |
+| `opencode-zen` | OpenCode Zen | OpenAI-compatible | — | Curated models tested by the OpenCode team |
+| `opencode-go` | OpenCode Go | OpenAI-compatible | — | OpenCode Zen models on the Go plan |
+| `nvidia` | NVIDIA | OpenAI-compatible | `nvapi-` | NVIDIA-hosted open models, free developer tier |
+| `nara` | NaraRouter | OpenAI-compatible | `sk-nry-` | Affordable multi-model gateway |
+| `tokenharbor` | Token Harbor | OpenAI-compatible | `thk_live_` | One universal key for many AI providers |
+| `openai` | OpenAI | OpenAI-compatible | `sk-` | GPT, o-series and Codex models |
+| `anthropic` | Anthropic | Anthropic Messages | `sk-ant-` | Claude models |
+| `gemini` | Google Gemini | Google GenAI | `AIza` | Gemini models |
+| `grok` | xAI Grok | OpenAI-compatible | `xai-` | Grok models |
+| `groq` | Groq | OpenAI-compatible | `gsk_` | Fast open models on Groq hardware |
+| `qwen` | Qwen | OpenAI-compatible | `sk-` | Alibaba Qwen models |
+| `minimax` | MiniMax | OpenAI-compatible | — | MiniMax models |
+| `deepseek` | DeepSeek | OpenAI-compatible | `sk-` | DeepSeek chat and reasoning models |
+| `mistral` | Mistral | OpenAI-compatible | — | Mistral and Magistral models |
+| `huggingface` | Hugging Face | OpenAI-compatible | `hf_` | Open models via the Hugging Face router |
+
+The key prefix is a hint shown at the prompt, not a validation rule — vendors change prefixes without notice, and rejecting a working key would be worse than showing no hint.
+
+Two entries carry more than the table shows. `anthropic` and `gemini` do not accept a `Bearer` header, so `add-builtin` writes the `auth_scheme` each one expects; a `Bearer` there returns a 401 that looks identical to a bad key. `opencode-zen` lists Claude models on an OpenAI-compatible `/models` route but serves them over the Anthropic Messages API, so the entry pins `claude-*` to that protocol — without the pin those models list successfully and then fail on first use.
+
+For how a key reaches any of these endpoints, see [Authentication and credentials](./authentication.md).
+
 ## `kimi`
 
 For connecting to Moonshot AI's OpenAI-compatible interface, including the Lacrous Kimi Code managed service and Kimi Platform API keys.
