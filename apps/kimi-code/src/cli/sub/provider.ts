@@ -17,6 +17,7 @@ import {
   DiscoveredModelsAuthError,
   fetchDiscoveredModels,
   normalizeDiscoveryBaseUrl,
+  type DiscoveredModelInfo,
   type DiscoveryAuthStyle,
 } from '@moonshot-ai/kimi-code-oauth';
 import {
@@ -45,7 +46,10 @@ import {
   type BuiltInProviderPin,
 } from '#/utils/built-in-providers';
 import { parseProviderBaseUrl } from '#/utils/custom-provider';
-import { refreshAllProviderModels } from '#/tui/utils/refresh-providers';
+import {
+  refreshAllProviderModels,
+  type RefreshProviderHost,
+} from '#/tui/utils/refresh-providers';
 
 interface WritableLike {
   write(chunk: string): boolean;
@@ -150,15 +154,7 @@ export async function handleProviderEdit(
   const harness = deps.getHarness();
   await harness.ensureConfigFile();
   const config = await harness.getConfig();
-  const existing = config.providers[id];
-  if (existing === undefined) {
-    const known = Object.keys(config.providers).toSorted();
-    deps.stderr.write(
-      `Provider "${id}" not found.` +
-        (known.length > 0 ? `\nConfigured providers:\n${known.map((p) => `  - ${p}\n`).join('')}` : ''),
-    );
-    deps.exit(1);
-  }
+  const existing = requireProvider(deps, config, id);
 
   const patch: Record<string, unknown> = {};
   if (opts.type !== undefined) {
@@ -225,19 +221,7 @@ export async function handleProviderEdit(
   }
 
   deps.stdout.write('Refreshing models from the endpoint…\n');
-  const result = await refreshAllProviderModels(
-    {
-      getConfig: () => harness.getConfig({ reload: true }),
-      removeProvider: (target: string) => harness.removeProvider(target),
-      setConfig: (next) => harness.setConfig(next),
-      resolveOAuthToken: async (_providerName: string, oauthRef?: OAuthRef) => {
-        const tokenProvider = harness.auth.resolveOAuthTokenProvider(id, oauthRef);
-        return tokenProvider.getAccessToken();
-      },
-      userAgent: createKimiCodeUserAgent(),
-    },
-    { providerId: id },
-  );
+  const result = await refreshAllProviderModels(providerRefreshHost(harness, id), { providerId: id });
 
   const failure = result.failed.find((f) => f.provider === id);
   if (failure !== undefined) {
@@ -1087,6 +1071,226 @@ function withVersionSegment(base: string, segment: string): string {
   return base.endsWith(`/${segment}`) ? base : `${base}/${segment}`;
 }
 
+/** Resolves the provider record or ends the command naming what is configured. */
+function requireProvider(
+  deps: ProviderDeps,
+  config: KimiConfig,
+  id: string,
+): KimiConfig['providers'][string] {
+  const provider = config.providers[id];
+  if (provider !== undefined) return provider;
+  const known = Object.keys(config.providers).toSorted();
+  deps.stderr.write(
+    `Provider "${id}" not found.` +
+      (known.length > 0 ? `\nConfigured providers:\n${known.map((p) => `  - ${p}\n`).join('')}` : ''),
+  );
+  deps.exit(1);
+}
+
+/**
+ * The refresh host, assembled once so the CLI's two writing paths — an edit
+ * that re-reads the model list and an explicit `provider models --refresh` —
+ * cannot drift apart in how they resolve credentials or user agent.
+ */
+function providerRefreshHost(harness: KimiHarness, providerId: string): RefreshProviderHost {
+  return {
+    getConfig: () => harness.getConfig({ reload: true }),
+    removeProvider: (target: string) => harness.removeProvider(target),
+    setConfig: (next) => harness.setConfig(next),
+    resolveOAuthToken: async (_providerName: string, oauthRef?: OAuthRef) =>
+      harness.auth.resolveOAuthTokenProvider(providerId, oauthRef).getAccessToken(),
+    userAgent: createKimiCodeUserAgent(),
+  };
+}
+
+export interface ProviderModelsOptions {
+  readonly json: boolean;
+  /** Re-read the model list from the endpoint and persist it before listing. */
+  readonly refresh: boolean;
+  /** Report what the endpoint advertises, without writing anything. */
+  readonly available: boolean;
+}
+
+interface ProviderModelRow {
+  readonly alias: string;
+  readonly model: string;
+  readonly maxContextSize: number;
+  readonly protocol?: string;
+  readonly displayName?: string;
+}
+
+/**
+ * `kimi provider models` — which models one installed provider can serve, from
+ * three angles: the aliases config holds right now (the default), what the
+ * endpoint advertises (`--available`), and bringing the two back into sync
+ * (`--refresh`).
+ *
+ * `--available` stays read-only on purpose: someone checking why a model is
+ * missing should not have to mutate their config to find out, and a probe that
+ * writes would race the periodic refresh the daemon already runs. It reuses
+ * `provider test`'s credential resolution and failure vocabulary, so one broken
+ * key is reported the same way by both commands.
+ *
+ * `--refresh` is the only writing mode, and it delegates to the same
+ * orchestrator the TUI and the daemon's scheduled refresh use.
+ */
+export async function handleProviderModels(
+  deps: ProviderDeps,
+  providerId: string,
+  opts: ProviderModelsOptions,
+): Promise<void> {
+  const id = providerId.trim();
+  if (id.length === 0) {
+    deps.stderr.write('Provider id is required.\n');
+    deps.exit(1);
+  }
+
+  const harness = deps.getHarness();
+  await harness.ensureConfigFile();
+  let config = await harness.getConfig();
+  requireProvider(deps, config, id);
+
+  if (opts.refresh) {
+    const result = await refreshAllProviderModels(providerRefreshHost(harness, id), { providerId: id });
+    const failure = result.failed.find((entry) => entry.provider === id);
+    if (failure !== undefined) {
+      deps.stderr.write(`Model refresh failed: ${failure.reason}\n`);
+      deps.stderr.write('Existing models are left untouched.\n');
+      deps.exit(1);
+    }
+    const change = result.changed.find((entry) => entry.providerId === id);
+    deps.stdout.write(
+      change === undefined
+        ? 'Model list unchanged.\n'
+        : `Models refreshed: +${String(change.added)} added, ${String(change.removed)} removed.\n`,
+    );
+    config = await harness.getConfig({ reload: true });
+  }
+
+  const provider = requireProvider(deps, config, id);
+  const rows = Object.entries(config.models ?? {})
+    .filter(([, entry]) => entry.provider === id)
+    .map(([alias, entry]): ProviderModelRow => ({
+      alias,
+      model: entry.model,
+      maxContextSize: entry.maxContextSize,
+      protocol: entry.protocol,
+      displayName: entry.displayName,
+    }))
+    .toSorted((a, b) => a.alias.localeCompare(b.alias));
+
+  const advertised = opts.available
+    ? await fetchAdvertisedModels(deps, harness, id, provider)
+    : undefined;
+
+  if (opts.json) {
+    deps.stdout.write(
+      `${JSON.stringify(
+        {
+          provider: id,
+          type: provider.type,
+          baseUrl: provider.baseUrl,
+          defaultModel: config.defaultModel,
+          models: rows,
+          available: advertised,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+
+  const baseUrl = provider.baseUrl?.trim();
+  deps.stdout.write(
+    `${id}  type=${provider.type}${baseUrl === undefined || baseUrl.length === 0 ? '' : `  base_url=${baseUrl}`}\n`,
+  );
+  if (rows.length === 0) {
+    deps.stdout.write(
+      `  No models configured. Run \`kimi provider models ${id} --refresh\` to read them from the endpoint.\n`,
+    );
+  }
+  for (const row of rows) {
+    deps.stdout.write(
+      `  ${row.alias}  model=${row.model}  ctx=${String(row.maxContextSize)}` +
+        (row.protocol === undefined ? '' : `  protocol=${row.protocol}`) +
+        (row.displayName === undefined ? '' : `  name=${row.displayName}`) +
+        (config.defaultModel === row.alias ? '  (default)' : '') +
+        '\n',
+    );
+  }
+  if (config.defaultModel !== undefined && !rows.some((row) => row.alias === config.defaultModel)) {
+    deps.stdout.write(`\nDefault model: ${config.defaultModel} (belongs to another provider)\n`);
+  }
+
+  if (advertised !== undefined) {
+    deps.stdout.write(
+      advertised.length === 0
+        ? `\nEndpoint advertises no models.\n`
+        : `\nEndpoint advertises ${String(advertised.length)} model${advertised.length === 1 ? '' : 's'}:\n`,
+    );
+    for (const model of advertised) {
+      deps.stdout.write(
+        `  ${model.id}` +
+          (model.maxContextSize === undefined ? '' : `  ctx=${String(model.maxContextSize)}`) +
+          (model.protocol === undefined ? '' : `  protocol=${model.protocol}`) +
+          (model.capabilities === undefined || model.capabilities.length === 0
+            ? ''
+            : `  [${model.capabilities.join(',')}]`) +
+          '\n',
+      );
+    }
+  }
+}
+
+/**
+ * Reads the endpoint's own model list without persisting it. Every failure ends
+ * the command through the same classification `provider test` prints, because
+ * a user comparing the two commands should never have to learn two vocabularies.
+ */
+async function fetchAdvertisedModels(
+  deps: ProviderDeps,
+  harness: KimiHarness,
+  providerId: string,
+  provider: KimiConfig['providers'][string],
+): Promise<DiscoveredModelInfo[]> {
+  const baseUrl = provider.baseUrl?.trim();
+  if (baseUrl === undefined || baseUrl.length === 0) {
+    deps.stderr.write('No base_url configured — set one with `kimi provider edit --base-url`.\n');
+    deps.exit(1);
+  }
+  const check = parseProviderBaseUrl(baseUrl);
+  if (!check.ok) {
+    deps.stderr.write(`base_url ${check.reason}\n`);
+    deps.exit(1);
+  }
+  const credential = await resolveTestCredential(deps, harness, providerId, provider);
+  if (!credential.present) {
+    deps.stderr.write(`Cannot read models from the endpoint: ${credential.detail}\n`);
+    deps.exit(1);
+  }
+
+  const profile = PROVIDER_TEST_WIRE_PROFILE[provider.type];
+  let probed: { readonly url: string; readonly response: Response } | undefined;
+  try {
+    return await fetchDiscoveredModels({
+      baseUrl: normalizeDiscoveryBaseUrl(baseUrl),
+      apiKey: credential.secret,
+      userAgent: createKimiCodeUserAgent(),
+      authStyle: profile?.authStyle ?? 'bearer',
+      versionSegment: profile?.versionSegment,
+      fetchImpl: async (url, init) => {
+        const response = await fetchWithTimeout(url, init, DEFAULT_PROVIDER_TEST_TIMEOUT_MS);
+        probed = { url: requestUrl(url), response };
+        return response;
+      },
+    });
+  } catch (error) {
+    deps.stderr.write(`Could not read models: ${describeTestFailure(error, probed, credential.secret)}\n`);
+    deps.exit(1);
+  }
+}
+
 /** `fetch` accepts three input shapes; every diagnostic in this file wants the URL as text. */
 export function requestUrl(input: string | URL | Request): string {
   if (typeof input === 'string') return input;
@@ -1656,6 +1860,30 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
       const resolved = resolveDeps(deps);
       await runAction(resolved, () => handleProviderList(resolved, { json: options.json === true }));
     });
+
+  provider
+    .command('models <providerId>')
+    .description(
+      'Show the models a configured provider serves. Reads only, unless --refresh is passed.',
+    )
+    .option('--available', 'Also list what the endpoint advertises, without writing anything.', false)
+    .option('--refresh', 'Re-read the model list from the endpoint and save it before listing.', false)
+    .option('--json', 'Emit the provider, its models and the advertised list as JSON.', false)
+    .action(
+      async (
+        providerId: string,
+        options: { available?: boolean; refresh?: boolean; json?: boolean },
+      ) => {
+        const resolved = resolveDeps(deps);
+        await runAction(resolved, () =>
+          handleProviderModels(resolved, providerId, {
+            json: options.json === true,
+            refresh: options.refresh === true,
+            available: options.available === true,
+          }),
+        );
+      },
+    );
 
   provider
     .command('test <providerId>')

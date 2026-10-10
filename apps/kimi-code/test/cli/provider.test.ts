@@ -171,6 +171,14 @@ async function tryRun<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
+// A handler that reports its own failure calls `deps.exit(1)`. Under the real
+// `process.exit` that ends the process there; the test double throws instead,
+// so `runAction`'s boundary catches the throw and exits a second time. Only the
+// final code is what the shell would see, and both are 1.
+function failedExit(exitCodes: readonly number[]): boolean {
+  return exitCodes.length > 0 && exitCodes.every((code) => code === 1);
+}
+
 const REGISTRY_URL = 'https://registry.example.test/v1/models/api.json';
 const REGISTRY_BODY = {
   kohub: {
@@ -1102,14 +1110,6 @@ describe('kimi provider auth', () => {
     return { ...made, current };
   }
 
-  // A handler that reports its own failure calls `deps.exit(1)`. Under the real
-  // `process.exit` that ends the process there; the test double throws instead,
-  // so `runAction`'s boundary catches the throw and exits a second time. Only
-  // the final code is what the shell would see, and both are 1.
-  function failed(exitCodes: readonly number[]): boolean {
-    return exitCodes.length > 0 && exitCodes.every((code) => code === 1);
-  }
-
   it('replaces the key and leaves the protocol and endpoint alone', async () => {
     stubModels(['m1']);
     const { current, stdout, stderr, exitCodes } = await runAuth(['mygw', '--api-key', 'sk-new']);
@@ -1143,7 +1143,7 @@ describe('kimi provider auth', () => {
       'MYGW_KEY',
     ]);
 
-    expect(failed(exitCodes)).toBe(true);
+    expect(failedExit(exitCodes)).toBe(true);
     expect(stderr.join('')).toContain('Pass either --api-key or --api-key-env, not both.');
     expect(current().providers['mygw']).toMatchObject({ apiKey: 'sk-old' });
   });
@@ -1151,7 +1151,7 @@ describe('kimi provider auth', () => {
   it('points at the credential flags, not the endpoint flags, when nothing is passed', async () => {
     const { stderr, exitCodes } = await runAuth(['mygw']);
 
-    expect(failed(exitCodes)).toBe(true);
+    expect(failedExit(exitCodes)).toBe(true);
     expect(stderr.join('')).toContain('Nothing to change. Pass --api-key or --api-key-env.');
     expect(stderr.join('')).not.toContain('--base-url');
   });
@@ -1159,7 +1159,7 @@ describe('kimi provider auth', () => {
   it('exits 1 when the provider id does not exist', async () => {
     const { stderr, exitCodes } = await runAuth(['nope', '--api-key', 'sk-new']);
 
-    expect(failed(exitCodes)).toBe(true);
+    expect(failedExit(exitCodes)).toBe(true);
     expect(stderr.join('')).toContain('not found');
     expect(stderr.join('')).toContain('mygw');
   });
@@ -1178,6 +1178,319 @@ describe('kimi provider auth', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(stdout.join('')).toContain('Skipped model refresh');
     expect(current().providers['mygw']).toMatchObject({ apiKey: 'sk-new' });
+  });
+});
+
+describe('kimi provider models', () => {
+  const GATEWAY = 'https://gw.example.test/v1';
+  const SECRET = 'sk-super-secret';
+
+  /**
+   * One alias per provider, already matching exactly what `/models` discovery
+   * writes for that row. Tests that need a *different* starting point override
+   * the model they care about; everything else stays identical, so a failed
+   * assertion can only come from the case under test.
+   */
+  function baseConfig(): KimiConfig {
+    return {
+      providers: {
+        mygw: { type: 'openai', baseUrl: GATEWAY, apiKey: SECRET },
+        other: { type: 'openai', baseUrl: 'https://other.example.test/v1', apiKey: 'sk-other' },
+      },
+      models: {
+        'mygw/m1': {
+          provider: 'mygw',
+          model: 'm1',
+          maxContextSize: 131072,
+          capabilities: ['tool_use'],
+          displayName: 'M One',
+        },
+        'other/keep': { provider: 'other', model: 'keep', maxContextSize: 4096 },
+      },
+      defaultModel: 'mygw/m1',
+    } as unknown as KimiConfig;
+  }
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  /** The `/models` shape every discoverable wire accepts. */
+  function modelsRoute(ids: readonly string[]): Response {
+    return jsonResponse({ data: ids.map((id) => ({ id })) });
+  }
+
+  function stubFetchWithCalls(
+    route: (url: string, init: RequestInit | undefined) => Response | Promise<Response>,
+  ): { calls: Array<{ url: string; headers: Record<string, string> }> } {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        calls.push({ url, headers: { ...((init?.headers ?? {}) as Record<string, string>) } });
+        return route(url, init);
+      }),
+    );
+    return { calls };
+  }
+
+  async function runModels(
+    argv: readonly string[],
+    initial: KimiConfig = baseConfig(),
+  ): Promise<ReturnType<typeof makeDeps> & { current: () => KimiConfig }> {
+    const { harness, current } = makeHarness(initial);
+    const made = makeDeps(harness);
+    const root = new Command('provider');
+    registerProviderCommand(root, made.deps);
+    await tryRun(() => root.parseAsync(['provider', 'models', ...argv], { from: 'user' }));
+    return { ...made, current };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('lists the aliases the provider owns and marks the default', async () => {
+    const { stdout, stderr, exitCodes } = await runModels(['mygw']);
+
+    const out = stdout.join('');
+    expect(exitCodes).toEqual([]);
+    expect(stderr).toEqual([]);
+    expect(out).toContain('mygw  type=openai');
+    expect(out).toContain(`base_url=${GATEWAY}`);
+    expect(out).toContain('  mygw/m1  model=m1  ctx=131072  name=M One  (default)');
+    // Another provider's alias must not leak into this provider's listing.
+    expect(out).not.toContain('other/keep');
+  });
+
+  it('omits the optional columns the alias does not declare', async () => {
+    const { stdout } = await runModels(['mygw', '--json']);
+    expect(JSON.parse(stdout.join(''))).toMatchObject({
+      provider: 'mygw',
+      type: 'openai',
+      baseUrl: GATEWAY,
+      defaultModel: 'mygw/m1',
+      models: [{ alias: 'mygw/m1', model: 'm1', maxContextSize: 131072, displayName: 'M One' }],
+    });
+  });
+
+  it('emits the whole document, including what the endpoint advertises, as JSON', async () => {
+    stubFetchWithCalls(() => modelsRoute(['m1', 'm2']));
+    const { stdout, exitCodes } = await runModels(['mygw', '--available', '--json']);
+
+    expect(exitCodes).toEqual([]);
+    const doc = JSON.parse(stdout.join('')) as {
+      models: Array<{ alias: string }>;
+      available: Array<{ id: string }>;
+    };
+    expect(doc.models.map((m) => m.alias)).toEqual(['mygw/m1']);
+    expect(doc.available.map((m) => m.id)).toEqual(['m1', 'm2']);
+  });
+
+  it('points at --refresh when the provider has no models yet', async () => {
+    const initial = { providers: baseConfig().providers } as unknown as KimiConfig;
+    const { stdout, exitCodes } = await runModels(['mygw'], initial);
+
+    expect(exitCodes).toEqual([]);
+    expect(stdout.join('')).toContain('No models configured.');
+    expect(stdout.join('')).toContain('kimi provider models mygw --refresh');
+  });
+
+  it('names the provider when the default model belongs to someone else', async () => {
+    const initial = { ...baseConfig(), defaultModel: 'other/keep' } as unknown as KimiConfig;
+    const { stdout } = await runModels(['mygw'], initial);
+
+    expect(stdout.join('')).toContain('Default model: other/keep (belongs to another provider)');
+    expect(stdout.join('')).not.toContain('(default)');
+  });
+
+  it('exits 1 and lists what is configured when the provider is unknown', async () => {
+    const { stderr, exitCodes } = await runModels(['nope']);
+
+    expect(failedExit(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('Provider "nope" not found.');
+    expect(stderr.join('')).toContain('  - mygw\n');
+    expect(stderr.join('')).toContain('  - other\n');
+  });
+
+  it('refreshes the list from the endpoint and persists the change', async () => {
+    stubFetchWithCalls(() => modelsRoute(['m1', 'm2']));
+    const { current, stdout, stderr, exitCodes } = await runModels(['mygw', '--refresh']);
+
+    expect(exitCodes).toEqual([]);
+    expect(stderr).toEqual([]);
+    expect(stdout.join('')).toContain('Models refreshed: +1 added, 0 removed.');
+    // The freshly discovered alias, with the default context the refresh fills in.
+    expect(current().models?.['mygw/m2']).toEqual({
+      provider: 'mygw',
+      model: 'm2',
+      maxContextSize: 131072,
+      capabilities: ['tool_use'],
+      displayName: 'm2',
+    });
+    // Discovery rewrites model aliases only; the user-owned provider record and
+    // the other provider's aliases survive.
+    expect(current().providers['mygw']).toMatchObject({ baseUrl: GATEWAY });
+    expect(current().models?.['other/keep']).toBeDefined();
+    expect(stdout.join('')).toContain('  mygw/m2  model=m2');
+  });
+
+  it('reports an unchanged list instead of writing the same aliases back', async () => {
+    stubFetchWithCalls(() => modelsRoute(['m1']));
+    // Byte-for-byte what the refresh would write, so the comparison that decides
+    // "changed" vs "unchanged" comes out even.
+    const initial = {
+      ...baseConfig(),
+      models: {
+        'mygw/m1': {
+          provider: 'mygw',
+          model: 'm1',
+          maxContextSize: 131072,
+          capabilities: ['tool_use'],
+          displayName: 'm1',
+        },
+      },
+    } as unknown as KimiConfig;
+    const { current, stdout, exitCodes } = await runModels(['mygw', '--refresh'], initial);
+
+    expect(exitCodes).toEqual([]);
+    expect(stdout.join('')).toContain('Model list unchanged.');
+    expect(current().models?.['mygw/m1']).toBeDefined();
+  });
+
+  it('drops an alias the endpoint no longer lists', async () => {
+    stubFetchWithCalls(() => modelsRoute(['m1']));
+    const initial = {
+      ...baseConfig(),
+      models: {
+        ...baseConfig().models,
+        'mygw/m2': {
+          provider: 'mygw',
+          model: 'm2',
+          maxContextSize: 131072,
+          capabilities: ['tool_use'],
+          displayName: 'M Two',
+        },
+      },
+    } as unknown as KimiConfig;
+    const { current, stdout, exitCodes } = await runModels(['mygw', '--refresh'], initial);
+
+    expect(exitCodes).toEqual([]);
+    expect(stdout.join('')).toContain('Models refreshed: +0 added, 1 removed.');
+    expect(current().models?.['mygw/m2']).toBeUndefined();
+    expect(current().models?.['mygw/m1']).toBeDefined();
+    // Another provider's aliases are none of this provider's business.
+    expect(current().models?.['other/keep']).toBeDefined();
+  });
+
+  it('leaves the models alone when the refresh fails', async () => {
+    stubFetchWithCalls(() => jsonResponse({ error: 'nope' }, 401));
+    const { current, stdout, stderr, exitCodes } = await runModels(['mygw', '--refresh']);
+
+    expect(failedExit(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('Model refresh failed:');
+    expect(stderr.join('')).toContain('Existing models are left untouched.');
+    // A failed refresh must not half-apply: the alias the user already had is
+    // still there, and nothing was announced as refreshed.
+    expect(stdout.join('')).not.toContain('Models refreshed');
+    expect(current().models?.['mygw/m1']).toBeDefined();
+  });
+
+  it('reports the advertised models without writing anything', async () => {
+    const { calls } = stubFetchWithCalls(() => modelsRoute(['m1', 'm2']));
+    const { current, stdout, exitCodes } = await runModels(['mygw', '--available']);
+
+    const out = stdout.join('');
+    expect(exitCodes).toEqual([]);
+    expect(calls.map((call) => call.url)).toEqual([`${GATEWAY}/models`]);
+    expect(out).toContain('Endpoint advertises 2 models:');
+    // A bare `{id}` row carries no context or capabilities, so the line degrades
+    // to the id alone rather than printing empty columns.
+    expect(out).toContain('  m1\n');
+    expect(out).toContain('  m2\n');
+    expect(out).not.toContain('undefined');
+    // Read-only: `m2` was advertised but never written to the config.
+    expect(current().models?.['mygw/m2']).toBeUndefined();
+    expect(out).toContain('  mygw/m1  model=m1');
+  });
+
+  it('prints the metadata a richer endpoint declares', async () => {
+    stubFetchWithCalls(() =>
+      jsonResponse({
+        data: [
+          {
+            id: 'm3',
+            context_length: 1_048_576,
+            tool_call: true,
+            reasoning: true,
+            display_name: 'Model Three',
+          },
+        ],
+      }),
+    );
+    const { stdout, exitCodes } = await runModels(['mygw', '--available']);
+
+    const out = stdout.join('');
+    expect(exitCodes).toEqual([]);
+    expect(out).toContain('Endpoint advertises 1 model:');
+    expect(out).toContain('  m3  ctx=1048576  [tool_use,thinking]');
+  });
+
+  it('sends the credential to /models and never prints it', async () => {
+    const { calls } = stubFetchWithCalls(() => modelsRoute(['m1']));
+    const { stdout, stderr, exitCodes } = await runModels(['mygw', '--available']);
+
+    expect(calls[0]?.headers['Authorization']).toBe(`Bearer ${SECRET}`);
+    expect(`${stdout.join('')}${stderr.join('')}`).not.toContain(SECRET);
+    expect(exitCodes).toEqual([]);
+  });
+
+  it('classifies a rejected credential instead of listing an empty catalog', async () => {
+    stubFetchWithCalls(() => jsonResponse({ error: 'bad key' }, 401));
+    const { stdout, stderr, exitCodes } = await runModels(['mygw', '--available']);
+
+    expect(failedExit(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('Could not read models: unauthorized (HTTP 401 at');
+    // The failure must not look like "this provider serves nothing".
+    expect(stdout.join('')).not.toContain('Endpoint advertises no models.');
+    expect(`${stdout.join('')}${stderr.join('')}`).not.toContain(SECRET);
+  });
+
+  it('explains that --available needs an endpoint', async () => {
+    const { calls } = stubFetchWithCalls(() => modelsRoute(['m1']));
+    const initial = {
+      providers: { mygw: { type: 'openai', apiKey: SECRET } },
+      models: baseConfig().models,
+    } as unknown as KimiConfig;
+    const { stderr, exitCodes } = await runModels(['mygw', '--available'], initial);
+
+    expect(failedExit(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('No base_url configured');
+    expect(stderr.join('')).toContain('kimi provider edit --base-url');
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses an unset api_key_env before touching the network', async () => {
+    const { calls } = stubFetchWithCalls(() => modelsRoute(['m1']));
+    const initial = {
+      providers: { mygw: { type: 'openai', baseUrl: GATEWAY, apiKeyEnv: 'MYGW_KEY' } },
+      models: baseConfig().models,
+      defaultModel: 'mygw/m1',
+    } as unknown as KimiConfig;
+    const { stderr, exitCodes } = await runModels(['mygw', '--available'], initial);
+
+    expect(failedExit(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('Cannot read models from the endpoint:');
+    expect(calls).toEqual([]);
+  });
+
+  it('never contacts the endpoint in the default listing mode', async () => {
+    const { calls } = stubFetchWithCalls(() => modelsRoute(['m1']));
+    const { exitCodes } = await runModels(['mygw']);
+
+    expect(exitCodes).toEqual([]);
+    expect(calls).toEqual([]);
   });
 });
 

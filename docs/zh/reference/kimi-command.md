@@ -463,6 +463,31 @@ kimi provider auth my-gateway --api-key YOUR_API_KEY
 在命令行上传入的 `--api-key` 会留在 shell 历史里，并且在命令运行期间对机器上的其他进程可见。如果这台机器不是你独占的，请优先使用 `--api-key-env`，或在环境变量里设置 `KIMI_REGISTRY_API_KEY`。
 :::
 
+#### `kimi provider models <providerId>`
+
+查看一个已配置的供应商能用哪些模型。每一行是一个「模型别名」，也就是你传给 `--model` 的名字，它指向该供应商端点上的一个模型 id。不带参数时这条命令只读不写：先打印供应商的协议和 base URL，再逐行列出别名、对应的模型 id、上下文窗口，并标出默认的那一个。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要查看的供应商 id |
+| `--available` | 同时列出端点公布的模型，不写入任何配置 |
+| `--refresh` | 从端点重新读取模型列表，保存后再列出 |
+| `--json` | 以 JSON 输出供应商、模型列表和端点公布的列表 |
+
+`--available` 用该供应商已保存的凭证探测端点的 `/models`，凭证解析和错误措辞与 [`kimi provider test`](#kimi-provider-test-providerid) 完全一致——未授权和超时读起来都一样，和你用哪条命令无关。`--refresh` 是唯一会写入的模式：它新增端点公布的别名，删掉该供应商下端点已不再公布的别名，并汇报新增和删除各多少条。这与 TUI 和后台定时刷新走的是同一条路径。
+
+上下文窗口取自配置里的 `max_context_size`。端点不一定返回这个信息，发现流程拿不到时会写入一个保守的默认值，所以数值明显偏小时可以在别名下手动改写，见 [`models`](../configuration/config-files.md#models)。
+
+```sh
+kimi provider models my-gateway
+kimi provider models my-gateway --available
+kimi provider models my-gateway --refresh
+```
+
+::: warning 注意
+`--refresh` 会写入 `config.toml`。端点不再公布的该供应商别名会被删除，所以当端点返回的列表比平时短——响应不完整，或目录本身缩减了——这些别名就会从配置里消失。其他供应商的别名不受影响。探测失败时不会写入任何内容，原有列表原样保留。
+:::
+
 #### `kimi provider test <providerId>`
 
 在不发送真实会话的前提下诊断一个已配置的供应商。探测分五个阶段并逐项打印：配置、凭证解析、端点可达性、模型发现，以及对某个模型别名发起的最小请求。未授权、禁止访问、未找到、被限流、超时和响应格式错误会被分别报出。API key 绝不会被打印，即使上游错误信息里把它原样回显也会先脱敏。

@@ -463,6 +463,31 @@ kimi provider auth my-gateway --api-key YOUR_API_KEY
 An `--api-key` value passed on the command line is visible in your shell history and to other processes on the machine while the command runs. Prefer `--api-key-env`, or set `KIMI_REGISTRY_API_KEY` in the environment, when the machine is not yours alone.
 :::
 
+#### `kimi provider models <providerId>`
+
+Show which models a configured provider can serve. Each line is a model alias — the name you pass to `--model` — pointing at a model id on the provider's endpoint. With no flag the command only reads: it prints the provider's protocol and base URL, then one line per alias with the model id, the context window, and a marker on the default one.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to inspect |
+| `--available` | Also list the models the endpoint advertises, without writing anything |
+| `--refresh` | Re-read the model list from the endpoint and save it before listing |
+| `--json` | Emit the provider, its models and the advertised list as JSON |
+
+`--available` probes the endpoint's `/models` route with the credential already stored for that provider, reusing the same resolution and error wording as [`kimi provider test`](#kimi-provider-test-providerid) — an unauthorized or timed-out probe reads the same whichever command you run. `--refresh` is the only mode that writes: it adds the aliases the endpoint advertises, drops this provider's aliases that no longer appear, and reports how many of each changed. It is the same refresh the TUI and the scheduled background job run.
+
+The context window is reported from `max_context_size` in the config. Discovery cannot always learn it from the endpoint and writes a conservative default instead, so set it by hand under the alias when the printed value looks too small — see [`models`](../configuration/config-files.md#models).
+
+```sh
+kimi provider models my-gateway
+kimi provider models my-gateway --available
+kimi provider models my-gateway --refresh
+```
+
+::: warning
+`--refresh` writes to `config.toml`. It removes this provider's aliases that the endpoint no longer advertises, so when the endpoint returns a shorter list than usual — a partial response, or a catalog that has genuinely shrunk — those aliases disappear from the config. Aliases belonging to other providers are never touched. A failed probe writes nothing and leaves the existing list in place.
+:::
+
 #### `kimi provider test <providerId>`
 
 Diagnose a configured provider without sending a real conversation. The probe runs five stages and prints each one: configuration, credential resolution, endpoint reachability, model discovery, and a minimal request against one model alias. Unauthorized, forbidden, not-found, rate-limited, timed-out and malformed-response outcomes are reported distinctly. The API key is never printed, including when an upstream error message quotes it back.
