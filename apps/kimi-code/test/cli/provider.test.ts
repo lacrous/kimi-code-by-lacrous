@@ -26,8 +26,10 @@ import {
   handleProviderEdit,
   handleProviderList,
   handleProviderRemove,
+  handleProviderTest,
   MANUAL_PROVIDER_TYPES,
   registerProviderCommand,
+  requestUrl,
   type ProviderDeps,
 } from '#/cli/sub/provider';
 
@@ -994,6 +996,18 @@ describe('kimi provider edit', () => {
     expect(current().providers['mygw']).toMatchObject({ baseUrl: 'https://old.example.test/v1' });
   });
 
+  it('rejects a base url carrying a pasted credential', async () => {
+    const { harness, current } = makeHarness(EXISTING);
+    const { deps, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderEdit(deps, 'mygw', { baseUrl: 'https://me:sk-secret@old.example.test/v1' }));
+
+    expect(exitCodes).toEqual([1]);
+    expect(stderr.join('')).toContain('--base-url must not embed a username or password.');
+    expect(stderr.join('')).not.toContain('sk-secret');
+    expect(current().providers['mygw']).toMatchObject({ baseUrl: 'https://old.example.test/v1' });
+  });
+
   it('keeps the change but reports the failure when the new endpoint rejects the key', async () => {
     vi.stubGlobal(
       'fetch',
@@ -1774,5 +1788,433 @@ describe('kimi provider engine routing', () => {
     await program.parseAsync(['node', 'kimi', 'provider', 'list'], { from: 'node' });
 
     expect(harnessRouting.kimiHarnessConstructor).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('kimi provider test', () => {
+  const GATEWAY = 'https://gw.example.test/v1';
+  const SECRET = 'sk-super-secret';
+
+  /**
+   * Matches one `[n/5] <stage> <STATUS> <detail>` line regardless of column
+   * padding, so the assertions pin what each stage *reported* instead of how
+   * many spaces the formatter emitted.
+   */
+  function stageLine(index: number, stage: string, status: string, detail: string): RegExp {
+    return new RegExp(`^\\[${String(index)}/5\\] ${stage}\\s+${status}\\s+${detail}$`, 'm');
+  }
+
+  function gatewayConfig(provider: Record<string, unknown>, models?: Record<string, unknown>): KimiConfig {
+    return {
+      providers: { mygw: { type: 'openai', baseUrl: GATEWAY, ...provider } },
+      models: {
+        'mygw/quick': { provider: 'mygw', model: 'gpt-4o-mini', maxContextSize: 128000 },
+        ...models,
+      },
+    } as unknown as KimiConfig;
+  }
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  /** Healthy gateway: reachable host, two listed models, a completable chat request. */
+  function happyRoute(url: string): Response {
+    if (url.endsWith('/models')) {
+      return jsonResponse({ data: [{ id: 'gpt-4o-mini' }, { id: 'gpt-4o' }] });
+    }
+    if (url.endsWith('/chat/completions')) {
+      return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'pong' } }] });
+    }
+    return jsonResponse({ ok: true });
+  }
+
+  function stubProbeFetch(
+    route: (url: string, init: RequestInit | undefined) => Response | Promise<Response>,
+  ): { calls: Array<{ url: string; headers: Record<string, string> }> } {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        calls.push({ url, headers: { ...((init?.headers ?? {}) as Record<string, string>) } });
+        return route(url, init);
+      }),
+    );
+    return { calls };
+  }
+
+  function gatewayDeps(overrides: Partial<ProviderDeps> = {}): ReturnType<typeof makeDeps> {
+    const { harness } = makeHarness(gatewayConfig({ apiKey: SECRET }));
+    return makeDeps(harness, overrides);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('runs all five stages and never prints the credential', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { deps, stdout, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    const out = stdout.join('');
+    expect(exitCodes).toEqual([]);
+    expect(stderr).toEqual([]);
+    expect(out).toContain('Provider test: mygw');
+    expect(out).toMatch(stageLine(1, 'config', 'OK', `configured \\(type=openai, base_url=${GATEWAY}\\)`));
+    expect(out).toMatch(stageLine(2, 'credential', 'OK', 'PRESENT \\(api_key from config.toml\\)'));
+    expect(out).toMatch(stageLine(3, 'connectivity', 'OK', 'endpoint answered \\(HTTP 200\\)'));
+    expect(out).toMatch(stageLine(4, 'models', 'OK', '2 models listed'));
+    expect(out).toMatch(
+      stageLine(
+        5,
+        'request',
+        'OK',
+        'minimal request succeeded via alias "mygw/quick" \\(model gpt-4o-mini, \\d+ ms\\)',
+      ),
+    );
+    expect(out).toContain('All stages passed (5 passed, 0 failed, 0 skipped).');
+    expect(`${out}${stderr.join('')}`).not.toContain(SECRET);
+
+    const modelsCall = calls.find((call) => call.url.endsWith('/models'));
+    const chatCall = calls.find((call) => call.url.endsWith('/chat/completions'));
+    expect(modelsCall?.url).toBe(`${GATEWAY}/models`);
+    expect(modelsCall?.headers['Authorization']).toBe(`Bearer ${SECRET}`);
+    expect(chatCall?.url).toBe(`${GATEWAY}/chat/completions`);
+    expect(chatCall?.headers['Authorization']).toBe(`Bearer ${SECRET}`);
+  });
+
+  it('renders the stage columns the way the summary reads back', async () => {
+    stubProbeFetch(happyRoute);
+    const { deps, stdout } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stdout.join('')).toContain('[1/5] config       OK     configured (type=openai');
+    expect(stdout.join('')).toContain('[5/5] request      OK     minimal request succeeded');
+  });
+
+  it('reports api_key_env as missing when the variable is unset, and keeps testing', async () => {
+    stubProbeFetch(happyRoute);
+    const { harness } = makeHarness(gatewayConfig({ apiKeyEnv: 'MYGW_KEY' }));
+    const { deps, stdout, stderr, exitCodes } = makeDeps(harness, { env: {} });
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(
+      stageLine(2, 'credential', 'FAIL', 'MISSING \\(api_key_env "MYGW_KEY" is not set or is empty\\)'),
+    );
+    // Stages 3-5 still ran: an unset variable and a dead endpoint are different bugs.
+    expect(stdout.join('')).toMatch(stageLine(4, 'models', 'OK', '2 models listed'));
+    expect(stdout.join('')).toMatch(stageLine(5, 'request', 'OK', '.*'));
+    expect(stderr.join('')).toContain('Provider test failed (4 passed, 1 failed, 0 skipped).');
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('reports api_key_env as present once the variable is exported', async () => {
+    stubProbeFetch(happyRoute);
+    const { harness } = makeHarness(gatewayConfig({ apiKeyEnv: 'MYGW_KEY' }));
+    const { deps, stdout, exitCodes } = makeDeps(harness, { env: { MYGW_KEY: ' sk-from-env ' } });
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stdout.join('')).toMatch(stageLine(2, 'credential', 'OK', 'PRESENT \\(api_key_env "MYGW_KEY"\\)'));
+    expect(stdout.join('')).toContain('All stages passed (5 passed, 0 failed, 0 skipped).');
+    expect(exitCodes).toEqual([]);
+  });
+
+  it('sends the env-resolved credential on the minimal request', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { harness } = makeHarness(gatewayConfig({ apiKeyEnv: 'MYGW_KEY' }));
+    const { deps, stdout } = makeDeps(harness, { env: { MYGW_KEY: 'sk-from-env' } });
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    const chatCall = calls.find((call) => call.url.endsWith('/chat/completions'));
+    expect(chatCall?.headers['Authorization']).toBe('Bearer sk-from-env');
+    expect(stdout.join('')).toMatch(stageLine(5, 'request', 'OK', '.*'));
+  });
+
+  it('names the conflicting credential sources instead of picking one', async () => {
+    stubProbeFetch(happyRoute);
+    const { harness } = makeHarness(gatewayConfig({ apiKey: SECRET, apiKeyEnv: 'MYGW_KEY' }));
+    const { deps, stderr, exitCodes } = makeDeps(harness, { env: { MYGW_KEY: 'sk-from-env' } });
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(
+      stageLine(2, 'credential', 'FAIL', 'MISSING \\(Provider "mygw" has both apiKey and apiKeyEnv set.*\\)'),
+    );
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('resolves an oauth credential through the harness without printing it', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const base = makeHarness({
+      providers: { mygw: { type: 'openai', baseUrl: GATEWAY, oauth: { storage: 'file', key: 'mygw' } } },
+      models: { 'mygw/quick': { provider: 'mygw', model: 'gpt-4o-mini' } },
+    } as unknown as KimiConfig);
+    const getAccessToken = vi.fn(async () => 'oauth-access-token');
+    const harness = {
+      ...base.harness,
+      auth: { resolveOAuthTokenProvider: vi.fn(() => ({ getAccessToken })) },
+    };
+    const { deps, stdout, stderr, exitCodes } = makeDeps(harness as unknown as FakeHarness);
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
+    expect(stdout.join('')).toMatch(stageLine(2, 'credential', 'OK', 'PRESENT \\(oauth token "mygw"\\)'));
+    expect(calls.find((call) => call.url.endsWith('/chat/completions'))?.headers['Authorization']).toBe(
+      'Bearer oauth-access-token',
+    );
+    expect(`${stdout.join('')}${stderr.join('')}`).not.toContain('oauth-access-token');
+    expect(exitCodes).toEqual([]);
+  });
+
+  it('classifies a 401 from model discovery as unauthorized', async () => {
+    stubProbeFetch((url) => (url.endsWith('/models') ? jsonResponse({ error: 'bad key' }, 401) : happyRoute(url)));
+    const { deps, stdout, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(stageLine(4, 'models', 'FAIL', `unauthorized \\(HTTP 401 at ${GATEWAY}/models\\)`));
+    expect(stdout.join('')).toMatch(stageLine(5, 'request', 'OK', '.*'));
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('classifies a 429 from model discovery as rate limited', async () => {
+    stubProbeFetch((url) => (url.endsWith('/models') ? jsonResponse({ error: 'slow down' }, 429) : happyRoute(url)));
+    const { deps, stderr } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(stageLine(4, 'models', 'FAIL', 'rate limited \\(HTTP 429 at .*\\)'));
+  });
+
+  it('classifies a DNS failure by its syscall code', async () => {
+    stubProbeFetch(() => {
+      throw Object.assign(new Error('getaddrinfo EAI_AGAIN gw.example.test'), { code: 'EAI_AGAIN' });
+    });
+    const { deps, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(stageLine(3, 'connectivity', 'FAIL', 'unreachable: host lookup failed \\(EAI_AGAIN\\)'));
+    expect(stderr.join('')).toMatch(stageLine(4, 'models', 'FAIL', 'unreachable: host lookup failed \\(EAI_AGAIN\\)'));
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('digs the syscall code out of the cause fetch wraps it in', async () => {
+    stubProbeFetch(() => {
+      const socket = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:1'), { code: 'ECONNREFUSED' });
+      throw new TypeError('fetch failed', { cause: socket });
+    });
+    const { deps, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(stageLine(3, 'connectivity', 'FAIL', 'unreachable: connection refused \\(ECONNREFUSED\\)'));
+    expect(stderr.join('')).not.toContain('fetch failed');
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('falls back to the cause message when the chain carries no code', async () => {
+    stubProbeFetch(() => {
+      throw new TypeError('fetch failed', { cause: new Error('other side closed') });
+    });
+    const { deps, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(stageLine(3, 'connectivity', 'FAIL', 'request failed: other side closed'));
+    expect(stderr.join('')).not.toContain('fetch failed');
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('reports a stalled request as a timeout, not a hang', async () => {
+    stubProbeFetch(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const { deps, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', { timeoutMs: 5 }));
+
+    expect(stderr.join('')).toMatch(stageLine(3, 'connectivity', 'FAIL', 'timeout: no response within 5 ms'));
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('reports a discovery payload it cannot read as a malformed response', async () => {
+    stubProbeFetch((url) => (url.endsWith('/models') ? jsonResponse({ oops: true }) : happyRoute(url)));
+    const { deps, stderr } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(
+      stageLine(4, 'models', 'FAIL', `malformed response at ${GATEWAY}/models: Unexpected models response at .*`),
+    );
+  });
+
+  it('skips the network stages when no base_url is configured', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { harness } = makeHarness({
+      providers: { mygw: { type: 'openai', apiKey: SECRET } },
+      models: { 'mygw/quick': { provider: 'mygw', model: 'gpt-4o-mini' } },
+    } as unknown as KimiConfig);
+    const { deps, stdout, stderr, exitCodes } = makeDeps(harness);
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stdout.join('')).toMatch(stageLine(1, 'config', 'OK', 'configured \\(type=openai\\)'));
+    for (const index of [3, 4, 5]) {
+      expect(stdout.join('')).toMatch(stageLine(index, '\\w+', 'SKIP', 'no base_url configured'));
+    }
+    expect(stderr).toEqual([]);
+    expect(stdout.join('')).toContain('No stage failed (2 passed, 0 failed, 3 skipped).');
+    expect(calls).toEqual([]);
+    expect(exitCodes).toEqual([]);
+  });
+
+  it('fails stage 1 with the configured provider list when the id is unknown', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { deps, stdout, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'nope', {}));
+
+    expect(stderr.join('')).toMatch(stageLine(1, 'config', 'FAIL', 'not configured — configured providers: mygw'));
+    expect(stdout.join('')).toMatch(stageLine(2, 'credential', 'SKIP', 'no provider record to test'));
+    expect(stdout.join('')).toMatch(stageLine(5, 'request', 'SKIP', 'no provider record to test'));
+    expect(stderr.join('')).toContain('Provider test failed (0 passed, 1 failed, 4 skipped).');
+    expect(calls).toEqual([]);
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('skips the probe for a wire it cannot speak', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { harness } = makeHarness({
+      providers: { mygw: { type: 'vertexai', baseUrl: GATEWAY, apiKey: SECRET } },
+      models: { 'mygw/quick': { provider: 'mygw', model: 'gemini-2.5-pro' } },
+    } as unknown as KimiConfig);
+    const { deps, stdout, stderr } = makeDeps(harness);
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stdout.join('')).toMatch(stageLine(5, 'request', 'SKIP', 'unsupported API — this client cannot send a probe over the "vertexai" wire'));
+    expect(stderr).toEqual([]);
+    expect(calls.some((call) => call.url.endsWith('/chat/completions'))).toBe(false);
+  });
+
+  it('probes the requested alias and refuses one belonging to another provider', async () => {
+    stubProbeFetch(happyRoute);
+    const { harness } = makeHarness(
+      gatewayConfig({ apiKey: SECRET }, { 'other/big': { provider: 'other', model: 'gpt-4o' } }),
+    );
+    const { deps, stdout, stderr } = makeDeps(harness);
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', { model: 'other/big' }));
+    expect(stdout.join('')).toMatch(
+      stageLine(5, 'request', 'SKIP', 'model alias "other/big" belongs to provider "other"'),
+    );
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', { model: 'mygw/quick' }));
+    expect(stdout.join('')).toMatch(
+      stageLine(5, 'request', 'OK', 'minimal request succeeded via alias "mygw/quick" \\(model gpt-4o-mini, \\d+ ms\\)'),
+    );
+    expect(stderr).toEqual([]);
+  });
+
+  it('rejects a non-positive --timeout before touching the network', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { deps, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', { timeoutMs: 0 }));
+
+    expect(stderr.join('')).toContain('--timeout must be a positive number of milliseconds.');
+    expect(calls).toEqual([]);
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('redacts the credential the server echoes back in its error body', async () => {
+    stubProbeFetch((url) =>
+      url.endsWith('/models')
+        ? happyRoute(url)
+        : jsonResponse({ error: { message: `invalid key ${SECRET}` } }, 401),
+    );
+    const { deps, stdout, stderr, exitCodes } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(
+      stageLine(
+        5,
+        'request',
+        'FAIL',
+        `unauthorized \\(HTTP 401 at ${GATEWAY}/chat/completions\\): .*\\[redacted\\].*`,
+      ),
+    );
+    expect(`${stdout.join('')}${stderr.join('')}`).not.toContain(SECRET);
+    expect(exitCodes).toEqual([1]);
+  });
+
+  it('fails a 200 response whose body is not JSON', async () => {
+    stubProbeFetch((url) =>
+      url.endsWith('/models') ? happyRoute(url) : new Response('<html>gateway</html>', { status: 200 }),
+    );
+    const { deps, stderr } = gatewayDeps();
+
+    await tryRun(() => handleProviderTest(deps, 'mygw', {}));
+
+    expect(stderr.join('')).toMatch(
+      stageLine(5, 'request', 'FAIL', `malformed response — ${GATEWAY}/chat/completions answered HTTP 200 with a body that is not JSON`),
+    );
+  });
+
+  it('sends the anthropic wire its own auth header and version segment', async () => {
+    const { calls } = stubProbeFetch(happyRoute);
+    const { harness } = makeHarness({
+      providers: { claude: { type: 'anthropic', baseUrl: 'https://api.example.test', apiKey: SECRET } },
+      models: { 'claude/quick': { provider: 'claude', model: 'claude-sonnet-4-5' } },
+    } as unknown as KimiConfig);
+    const { deps, stdout, stderr } = makeDeps(harness);
+
+    await tryRun(() => handleProviderTest(deps, 'claude', {}));
+
+    const modelsCall = calls.find((call) => call.url.endsWith('/v1/models'));
+    const messagesCall = calls.find((call) => call.url.endsWith('/v1/messages'));
+    expect(modelsCall?.url).toBe('https://api.example.test/v1/models');
+    expect(modelsCall?.headers['x-api-key']).toBe(SECRET);
+    expect(modelsCall?.headers['anthropic-version']).toBe('2023-06-01');
+    expect(messagesCall?.headers['x-api-key']).toBe(SECRET);
+    expect(stdout.join('')).toMatch(stageLine(5, 'request', 'OK', '.*'));
+    expect(stderr).toEqual([]);
+  });
+
+  it('wires `provider test` through commander, including --timeout', async () => {
+    stubProbeFetch(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const { harness } = makeHarness(gatewayConfig({ apiKey: SECRET }));
+    const { deps, stdout, stderr, exitCodes } = makeDeps(harness);
+    const program = new Command('kimi');
+    registerProviderCommand(program, deps);
+
+    await tryRun(() => program.parseAsync(['node', 'kimi', 'provider', 'test', 'mygw', '--timeout', '5']));
+
+    // A 5 ms budget never elapses against the 10 s default, so this proves the
+    // parsed option reached the handler.
+    expect(stderr.join('')).toMatch(stageLine(3, 'connectivity', 'FAIL', 'timeout: no response within 5 ms'));
+    expect(stdout.join('')).toContain('Provider test: mygw');
+    // The test double's `exit` throws (production calls `process.exit`, which
+    // never returns), so the handler's exit lands in `runAction`'s catch and
+    // exits again.
+    expect(exitCodes).toEqual([1, 1]);
   });
 });

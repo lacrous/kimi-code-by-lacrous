@@ -13,6 +13,13 @@
  */
 
 import {
+  declaredProviderCredential,
+  DiscoveredModelsAuthError,
+  fetchDiscoveredModels,
+  normalizeDiscoveryBaseUrl,
+  type DiscoveryAuthStyle,
+} from '@moonshot-ai/kimi-code-oauth';
+import {
   applyCatalogProvider,
   catalogProviderModels,
   CatalogFetchError,
@@ -152,23 +159,12 @@ export async function handleProviderEdit(
     patch['type'] = wire;
   }
   if (opts.baseUrl !== undefined) {
-    const baseUrl = opts.baseUrl.trim();
-    if (baseUrl.length === 0) {
-      deps.stderr.write('--base-url cannot be empty. Omit the flag to keep the current value.\n');
+    const check = parseProviderBaseUrl(opts.baseUrl);
+    if (!check.ok) {
+      deps.stderr.write(`--base-url ${check.reason}\n`);
       deps.exit(1);
     }
-    let parsed: URL;
-    try {
-      parsed = new URL(baseUrl);
-    } catch {
-      deps.stderr.write(`--base-url "${baseUrl}" is not a valid URL.\n`);
-      deps.exit(1);
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      deps.stderr.write(`--base-url must be http(s), got "${parsed.protocol}".\n`);
-      deps.exit(1);
-    }
-    patch['baseUrl'] = baseUrl;
+    patch['baseUrl'] = check.baseUrl;
   }
 
   // Credential handling mirrors the config schema's mutual exclusion: an
@@ -569,6 +565,676 @@ export async function handleProviderList(
   }
 }
 
+/** Ordered stage names for {@link handleProviderTest}. */
+const PROVIDER_TEST_STAGES = [
+  'config',
+  'credential',
+  'connectivity',
+  'models',
+  'request',
+] as const;
+
+const DEFAULT_PROVIDER_TEST_TIMEOUT_MS = 10_000;
+
+/** The API-version pin every Anthropic request carries, `/models` included. */
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+/**
+ * Per-wire endpoint conventions, keyed by the provider's `type` (the wire) and
+ * never by its config id — a hand-written provider can be named anything, so
+ * only the wire decides how its endpoints authenticate and where its version
+ * segment sits. Mirrors the table the model-refresh orchestrator uses; kept
+ * local because that package does not export the lookup.
+ */
+const PROVIDER_TEST_WIRE_PROFILE: Readonly<
+  Record<string, { readonly authStyle: DiscoveryAuthStyle; readonly versionSegment?: string }>
+> = {
+  anthropic: { authStyle: 'x-api-key', versionSegment: 'v1' },
+  'google-genai': { authStyle: 'x-goog-api-key' },
+};
+
+/** Syscall codes worth naming: each one is a different thing to go fix. */
+const UNREACHABLE_REASONS: Readonly<Record<string, string>> = {
+  ENOTFOUND: 'host not found',
+  EAI_AGAIN: 'host lookup failed',
+  EHOSTUNREACH: 'host unreachable',
+  ENETUNREACH: 'network unreachable',
+  ECONNREFUSED: 'connection refused',
+  ECONNRESET: 'connection reset',
+  ETIMEDOUT: 'connection timed out',
+  EPROTO: 'TLS handshake failed',
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'TLS certificate not trusted',
+  CERT_HAS_EXPIRED: 'TLS certificate expired',
+};
+
+type ProviderTestStageStatus = 'OK' | 'FAIL' | 'SKIP';
+
+interface ProviderTestStageResult {
+  readonly status: ProviderTestStageStatus;
+  readonly detail: string;
+}
+
+/**
+ * A stage failure carrying the short reason the CLI prints instead of a stack
+ * trace. The vocabulary is deliberately closed — `unauthorized`, `forbidden`,
+ * `not found`, `timeout`, `rate limited`, `malformed response`, `unreachable`,
+ * `server error`, `unexpected status`, `request failed` — so two runs of the
+ * same command stay comparable.
+ */
+class ProviderTestFailure extends Error {
+  constructor(
+    readonly reason: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ProviderTestFailure';
+  }
+}
+
+export interface ProviderTestOptions {
+  /** Alias to probe with. Defaults to the provider's first configured alias. */
+  readonly model?: string;
+  /** Per-request network budget in milliseconds. */
+  readonly timeoutMs?: number;
+}
+
+/**
+ * `kimi provider test` — a read-only, five-stage diagnostic for one configured
+ * provider: the record resolves, the credential resolves, the endpoint answers,
+ * the model list can be discovered, and a minimal completion goes through.
+ *
+ * Ordered deliberately: each stage can only fail for reasons the earlier ones
+ * have already ruled out, so a failure names the layer that broke instead of
+ * the first thing that happened to go wrong. Every stage runs even after an
+ * earlier failure — "unauthorized" and "unreachable" need different fixes, and
+ * stopping at the first failure hides the second one — while a stage that
+ * cannot run at all reports `SKIP` with the reason, so the summary always
+ * accounts for all five.
+ *
+ * Nothing here writes. This is the counterpart of `add` / `edit` / the model
+ * refresh, so it is safe to point at a working config while debugging it.
+ * The resolved credential is only ever attached to a request header: it is
+ * never printed, logged or echoed, and every string that reaches the terminal
+ * passes through {@link redactCredential} first, because a server that rejects
+ * a bad key is allowed to quote it back inside the error body.
+ */
+export async function handleProviderTest(
+  deps: ProviderDeps,
+  providerId: string,
+  opts: ProviderTestOptions,
+): Promise<void> {
+  const id = providerId.trim();
+  if (id.length === 0) {
+    deps.stderr.write('Provider id is required.\n');
+    deps.exit(1);
+  }
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TEST_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1) {
+    deps.stderr.write(`--timeout must be a positive number of milliseconds.\n`);
+    deps.exit(1);
+  }
+
+  const results: ProviderTestStageResult[] = [];
+  const report = (index: number, result: ProviderTestStageResult): void => {
+    results[index] = result;
+    const line = formatProviderTestStage(index, result);
+    if (result.status === 'FAIL') deps.stderr.write(line);
+    else deps.stdout.write(line);
+  };
+
+  deps.stdout.write(`Provider test: ${id}\n`);
+
+  const harness = deps.getHarness();
+  await harness.ensureConfigFile();
+  const config = await harness.getConfig();
+  const provider = config.providers[id];
+
+  if (provider === undefined) {
+    const known = Object.keys(config.providers).toSorted();
+    report(0, {
+      status: 'FAIL',
+      detail:
+        known.length > 0
+          ? `not configured — configured providers: ${known.join(', ')}`
+          : 'not configured — no providers are configured',
+    });
+    for (let index = 1; index < PROVIDER_TEST_STAGES.length; index++) {
+      report(index, { status: 'SKIP', detail: 'no provider record to test' });
+    }
+    finishProviderTest(deps, results);
+    return;
+  }
+
+  const baseUrl = provider.baseUrl?.trim();
+  report(0, {
+    status: 'OK',
+    detail:
+      `configured (type=${provider.type}` +
+      `${baseUrl === undefined || baseUrl.length === 0 ? '' : `, base_url=${baseUrl}`})`,
+  });
+
+  const credential = await resolveTestCredential(deps, harness, id, provider);
+  report(1, {
+    status: credential.present ? 'OK' : 'FAIL',
+    detail: credential.detail,
+  });
+  const secret = credential.present ? credential.secret : undefined;
+
+  // Stages 3-5 all need somewhere to send a request. A record without a
+  // `base_url` uses the vendor default resolved at request time, which the CLI
+  // cannot probe honestly, so it is reported rather than guessed at.
+  const base =
+    baseUrl === undefined || baseUrl.length === 0
+      ? undefined
+      : parseProviderBaseUrl(baseUrl).ok
+        ? normalizeDiscoveryBaseUrl(baseUrl)
+        : undefined;
+  const noBase: ProviderTestStageResult = {
+    status: 'SKIP',
+    detail:
+      baseUrl === undefined || baseUrl.length === 0
+        ? 'no base_url configured'
+        : `base_url "${baseUrl}" is not a usable http(s) URL`,
+  };
+
+  if (base === undefined) {
+    report(2, noBase);
+    report(3, noBase);
+    report(4, noBase);
+    finishProviderTest(deps, results);
+    return;
+  }
+
+  report(2, await testEndpointReachability(base, timeoutMs));
+  const discovery = await testModelDiscovery(base, provider.type, secret, timeoutMs);
+  report(3, discovery.result);
+  report(4, await testMinimalRequest(base, provider, secret, pickProbeModel(config, id, opts.model), timeoutMs));
+
+  finishProviderTest(deps, results);
+}
+
+function formatProviderTestStage(index: number, result: ProviderTestStageResult): string {
+  const stage = PROVIDER_TEST_STAGES[index] ?? '';
+  const total = PROVIDER_TEST_STAGES.length;
+  return `[${String(index + 1)}/${String(total)}] ${stage.padEnd(13)}${result.status.padEnd(5)}  ${result.detail}\n`;
+}
+
+function finishProviderTest(deps: ProviderDeps, results: ProviderTestStageResult[]): void {
+  const failed = results.filter((result) => result.status === 'FAIL').length;
+  const skipped = results.filter((result) => result.status === 'SKIP').length;
+  const passed = results.length - failed - skipped;
+  const summary = `${String(passed)} passed, ${String(failed)} failed, ${String(skipped)} skipped`;
+  if (failed === 0) {
+    deps.stdout.write(`${skipped === 0 ? 'All stages passed' : 'No stage failed'} (${summary}).\n`);
+    return;
+  }
+  deps.stderr.write(`Provider test failed (${summary}).\n`);
+  deps.exit(1);
+}
+
+type TestCredential =
+  | { readonly present: true; readonly detail: string; readonly secret: string | undefined }
+  | { readonly present: false; readonly detail: string };
+
+/**
+ * Resolves what the provider would actually send, without ever putting it on a
+ * terminal. The declared-vs-resolved distinction is the whole point of the
+ * stage: an `api_key_env` naming a variable nobody exported looks configured
+ * and fails only at the first real request.
+ */
+async function resolveTestCredential(
+  deps: ProviderDeps,
+  harness: KimiHarness,
+  providerId: string,
+  provider: KimiConfig['providers'][string],
+): Promise<TestCredential> {
+  const declared = declaredProviderCredential(provider, providerId);
+  switch (declared.kind) {
+    case 'conflict':
+      return { present: false, detail: `MISSING (${declared.message})` };
+    case 'inline':
+      return { present: true, detail: 'PRESENT (api_key from config.toml)', secret: declared.apiKey };
+    case 'env': {
+      const fromEnv = deps.env[declared.apiKeyEnv];
+      const value = typeof fromEnv === 'string' && fromEnv.trim().length > 0 ? fromEnv.trim() : undefined;
+      return value === undefined
+        ? {
+            present: false,
+            detail: `MISSING (api_key_env "${declared.apiKeyEnv}" is not set or is empty)`,
+          }
+        : { present: true, detail: `PRESENT (api_key_env "${declared.apiKeyEnv}")`, secret: value };
+    }
+    case 'none':
+      break;
+  }
+
+  if (provider.oauth !== undefined) {
+    try {
+      const token = await harness.auth
+        .resolveOAuthTokenProvider(providerId, provider.oauth)
+        .getAccessToken();
+      return typeof token === 'string' && token.length > 0
+        ? { present: true, detail: `PRESENT (oauth token "${provider.oauth.key}")`, secret: token }
+        : {
+            present: false,
+            detail: `MISSING (oauth token "${provider.oauth.key}" is empty — run \`kimi login\`)`,
+          };
+    } catch (error) {
+      return {
+        present: false,
+        detail: `MISSING (oauth token "${provider.oauth.key}" unavailable: ${errorMessage(error)})`,
+      };
+    }
+  }
+
+  // `auth_scheme = "none"` is how a local gateway says it wants no credential
+  // at all, so a record without one is not broken.
+  if (provider.authScheme?.kind === 'none') {
+    return { present: true, detail: 'PRESENT (auth_scheme = "none", no credential sent)', secret: undefined };
+  }
+
+  return {
+    present: false,
+    detail: 'MISSING (no api_key, api_key_env or oauth in config.toml)',
+  };
+}
+
+/**
+ * Stage 3. Any HTTP answer at all proves the host resolved, connected and
+ * completed TLS, which is the question this stage asks; the status is reported
+ * as-is because a `404` on an OpenAI-style `/v1` base is the healthy answer and
+ * calling it a failure would train users to ignore the stage.
+ */
+async function testEndpointReachability(base: string, timeoutMs: number): Promise<ProviderTestStageResult> {
+  try {
+    const response = await fetchWithTimeout(base, { method: 'GET', headers: { Accept: '*/*' } }, timeoutMs);
+    return { status: 'OK', detail: `endpoint answered (HTTP ${String(response.status)})` };
+  } catch (error) {
+    return { status: 'FAIL', detail: describeTestFailure(error) };
+  }
+}
+
+/**
+ * Stage 4. Delegates to the same `fetchDiscoveredModels` the refresh path uses
+ * so the probe cannot drift from the code that actually populates `models`.
+ * The `fetchImpl` shim exists to keep the raw `Response` — the thrown error is
+ * only a message, and classifying a `429` from message text would be a guess.
+ */
+async function testModelDiscovery(
+  base: string,
+  wire: string,
+  secret: string | undefined,
+  timeoutMs: number,
+): Promise<{ readonly result: ProviderTestStageResult }> {
+  const profile = PROVIDER_TEST_WIRE_PROFILE[wire];
+  let probed: { readonly url: string; readonly response: Response } | undefined;
+  try {
+    const models = await fetchDiscoveredModels({
+      baseUrl: base,
+      apiKey: secret,
+      userAgent: createKimiCodeUserAgent(),
+      authStyle: profile?.authStyle ?? 'bearer',
+      versionSegment: profile?.versionSegment,
+      fetchImpl: async (url, init) => {
+        const response = await fetchWithTimeout(url, init, timeoutMs);
+        probed = { url: requestUrl(url), response };
+        return response;
+      },
+    });
+    return {
+      result: {
+        status: 'OK',
+        detail: `${String(models.length)} model${models.length === 1 ? '' : 's'} listed${
+          models.length === 0 ? ' — the endpoint advertises nothing to request' : ''
+        }`,
+      },
+    };
+  } catch (error) {
+    return { result: { status: 'FAIL', detail: describeTestFailure(error, probed, secret) } };
+  }
+}
+
+/**
+ * Stage 5. The smallest request each wire accepts, against the first alias the
+ * user configured for this provider — a diagnostic must not invent a model id,
+ * because a request for a model the account cannot reach fails identically to
+ * a broken endpoint and sends the user hunting in the wrong place.
+ */
+async function testMinimalRequest(
+  base: string,
+  provider: KimiConfig['providers'][string],
+  secret: string | undefined,
+  model: ProbeModel,
+  timeoutMs: number,
+): Promise<ProviderTestStageResult> {
+  if (!model.ok) {
+    return {
+      status: 'SKIP',
+      detail: model.reason,
+    };
+  }
+  const request = buildProbeRequest(base, provider, secret, model.modelId);
+  if (!request.ok) {
+    return { status: 'SKIP', detail: request.reason };
+  }
+
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      request.url,
+      { method: 'POST', headers: request.headers, body: request.body },
+      timeoutMs,
+    );
+  } catch (error) {
+    return { status: 'FAIL', detail: describeTestFailure(error) };
+  }
+  const elapsed = Date.now() - startedAt;
+
+  if (!response.ok) {
+    const detail = await describeHttpFailure(response, request.url, secret);
+    return { status: 'FAIL', detail };
+  }
+
+  // A gateway that answers 200 with an HTML error page or an empty body has not
+  // served the request, and reporting that as success would be the one lie this
+  // command must never tell.
+  if (!(await hasJsonBody(response))) {
+    return {
+      status: 'FAIL',
+      detail: `malformed response — ${request.url} answered HTTP ${String(response.status)} with a body that is not JSON`,
+    };
+  }
+  return {
+    status: 'OK',
+    detail: `minimal request succeeded via alias "${model.alias}" (model ${model.modelId}, ${String(elapsed)} ms)`,
+  };
+}
+
+type ProbeModel = { readonly ok: true; readonly alias: string; readonly modelId: string } | { readonly ok: false; readonly reason: string };
+
+function pickProbeModel(config: KimiConfig, providerId: string, requested: string | undefined): ProbeModel {
+  const models = config.models ?? {};
+  if (requested !== undefined) {
+    const alias = models[requested];
+    if (alias === undefined) return { ok: false, reason: `unknown model alias "${requested}"` };
+    if (alias.provider !== providerId) {
+      return {
+        ok: false,
+        reason: `model alias "${requested}" belongs to provider "${alias.provider}"`,
+      };
+    }
+    return { ok: true, alias: requested, modelId: alias.model };
+  }
+  const first = Object.entries(models).find(([, model]) => model.provider === providerId);
+  if (first === undefined) {
+    return {
+      ok: false,
+      reason: `no model alias configured for provider "${providerId}" — add one or pass --model`,
+    };
+  }
+  return { ok: true, alias: first[0], modelId: first[1].model };
+}
+
+function buildProbeRequest(
+  base: string,
+  provider: KimiConfig['providers'][string],
+  secret: string | undefined,
+  modelId: string,
+): { readonly ok: true; readonly url: string; readonly headers: Record<string, string>; readonly body: string } | { readonly ok: false; readonly reason: string } {
+  const headers = buildProbeHeaders(provider, secret);
+  switch (provider.type) {
+    case 'openai':
+    case 'kimi':
+      return {
+        ok: true,
+        url: `${base}/chat/completions`,
+        headers,
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+          stream: false,
+        }),
+      };
+    case 'openai_responses':
+      return {
+        ok: true,
+        url: `${base}/responses`,
+        headers,
+        body: JSON.stringify({ model: modelId, input: 'ping', max_output_tokens: 16, stream: false }),
+      };
+    case 'anthropic':
+      return {
+        ok: true,
+        url: `${withVersionSegment(base, 'v1')}/messages`,
+        headers,
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+          stream: false,
+        }),
+      };
+    case 'google-genai':
+      return {
+        ok: true,
+        url: `${base}/models/${encodeURIComponent(modelId)}:generateContent`,
+        headers,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+          generationConfig: { maxOutputTokens: 1 },
+        }),
+      };
+    default:
+    case 'vertexai':
+      return {
+        ok: false,
+        reason: `unsupported API — this client cannot send a probe over the "${provider.type}" wire`,
+      };
+  }
+}
+
+function buildProbeHeaders(
+  provider: KimiConfig['providers'][string],
+  secret: string | undefined,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'User-Agent': createKimiCodeUserAgent(),
+    ...provider.customHeaders,
+  };
+  if (secret === undefined || secret.length === 0) return headers;
+  const scheme = provider.authScheme;
+  if (scheme?.kind === 'none') return headers;
+  if (scheme?.kind === 'custom-header' && scheme.header !== undefined) {
+    headers[scheme.header] = secret;
+    return headers;
+  }
+  const profile = PROVIDER_TEST_WIRE_PROFILE[provider.type];
+  switch (profile?.authStyle) {
+    case 'x-api-key':
+      headers['x-api-key'] = secret;
+      headers['anthropic-version'] = ANTHROPIC_API_VERSION;
+      break;
+    case 'x-goog-api-key':
+      headers['x-goog-api-key'] = secret;
+      break;
+    default:
+      headers['Authorization'] = `Bearer ${secret}`;
+      break;
+  }
+  return headers;
+}
+
+/** Inserts a vendor version segment unless the configured base already carries it. */
+function withVersionSegment(base: string, segment: string): string {
+  return base.endsWith(`/${segment}`) ? base : `${base}/${segment}`;
+}
+
+/** `fetch` accepts three input shapes; every diagnostic in this file wants the URL as text. */
+export function requestUrl(input: string | URL | Request): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+async function fetchWithTimeout(
+  url: string | URL | Request,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    throw classifyTestError(error, controller.signal, timeoutMs);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function classifyTestError(error: unknown, signal: AbortSignal, timeoutMs: number): ProviderTestFailure {
+  if (signal.aborted) {
+    return new ProviderTestFailure('timeout', `no response within ${String(timeoutMs)} ms`);
+  }
+  const coded = errorChain(error).find((entry) => errorCode(entry) !== undefined);
+  if (coded !== undefined) {
+    const code = errorCode(coded) ?? '';
+    return new ProviderTestFailure('unreachable', `${UNREACHABLE_REASONS[code] ?? 'host unreachable'} (${code})`);
+  }
+  if (error instanceof ProviderTestFailure) return error;
+  return new ProviderTestFailure('request failed', describeChain(error));
+}
+
+/**
+ * Unwraps a throwable outward-first. `fetch` rejects with a bare `TypeError:
+ * fetch failed` and hides the socket error one `cause` deeper, so the code and
+ * the useful message only exist further down the chain.
+ */
+function errorChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  let current = error;
+  while (typeof current === 'object' && current !== null && chain.length < 5) {
+    chain.push(current);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return chain;
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
+/**
+ * Picks the first message in the chain that says something `fetch failed` does
+ * not, so a dropped connection does not reach the terminal as `fetch failed`.
+ */
+function describeChain(error: unknown): string {
+  const message = errorChain(error)
+    .map(errorMessage)
+    .find((candidate) => candidate.length > 0 && candidate !== 'fetch failed');
+  return message ?? errorMessage(error);
+}
+
+function describeTestFailure(
+  error: unknown,
+  probed?: { readonly url: string; readonly response: Response },
+  secret?: string,
+): string {
+  if (probed !== undefined && !probed.response.ok) {
+    return `${httpReason(probed.response.status)} (HTTP ${String(probed.response.status)} at ${probed.url})`;
+  }
+  const failure =
+    error instanceof ProviderTestFailure
+      ? error
+      : error instanceof DiscoveredModelsAuthError
+        ? new ProviderTestFailure(httpReason(error.status), error.message)
+        : new ProviderTestFailure(reasonFromMessage(errorMessage(error)), describeChain(error));
+  const at = probed === undefined ? '' : ` at ${probed.url}`;
+  return `${failure.reason}${at}: ${redactCredential(truncate(failure.message, 200), secret)}`;
+}
+
+/**
+ * Turns a non-2xx answer into one short word. `fetchDiscoveredModels` only
+ * exposes the status for auth failures, so the other codes arrive as prose and
+ * are matched by the one phrase the package guarantees.
+ */
+function httpReason(status: number): string {
+  switch (status) {
+    case 401:
+      return 'unauthorized';
+    case 403:
+      return 'forbidden';
+    case 404:
+      return 'not found';
+    case 408:
+      return 'timeout';
+    case 429:
+      return 'rate limited';
+    default:
+      return status >= 500 ? 'server error' : 'unexpected status';
+  }
+}
+
+function reasonFromMessage(message: string): string {
+  if (message.includes('Unexpected models response')) return 'malformed response';
+  for (const [status, reason] of [
+    [401, 'unauthorized'],
+    [403, 'forbidden'],
+    [404, 'not found'],
+    [429, 'rate limited'],
+  ] as const) {
+    if (message.includes(`HTTP ${String(status)}`)) return reason;
+  }
+  return 'request failed';
+}
+
+async function describeHttpFailure(response: Response, url: string, secret: string | undefined): Promise<string> {
+  const reason = `${httpReason(response.status)} (HTTP ${String(response.status)} at ${url})`;
+  const body = redactCredential(truncate(singleLine(await readBodyText(response)), 200), secret);
+  return body.length === 0 ? reason : `${reason}: ${body}`;
+}
+
+async function hasJsonBody(response: Response): Promise<boolean> {
+  try {
+    JSON.parse(await readBodyText(response)) as unknown;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readBodyText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Removes the credential from anything bound for the terminal. A server that
+ * rejects a key is free to quote it back in its error body, and a CLI that
+ * pastes that into a terminal emulator or a scrollback buffer has leaked it
+ * into exactly the place the user pasted it from.
+ */
+function redactCredential(text: string, secret: string | undefined): string {
+  if (secret === undefined || secret.length === 0) return text;
+  return text.split(secret).join('[redacted]');
+}
+
+function singleLine(text: string): string {
+  return text.replaceAll(/\s+/g, ' ').trim();
+}
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}…`;
+}
+
 /**
  * Fetches the models.dev-style public catalog and lists providers, or — when
  * `providerId` is given — drills into one provider and lists its models. This
@@ -944,6 +1610,23 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
     .action(async (options: { json?: boolean }) => {
       const resolved = resolveDeps(deps);
       await runAction(resolved, () => handleProviderList(resolved, { json: options.json === true }));
+    });
+
+  provider
+    .command('test <providerId>')
+    .description(
+      'Run staged config, credential, connectivity, model-discovery and minimal-request checks against a configured provider. Never prints the credential.',
+    )
+    .option('--model <alias>', 'Model alias for the minimal request. Defaults to the provider\'s first configured alias.')
+    .option('--timeout <ms>', 'Per-request network timeout in milliseconds.', String(DEFAULT_PROVIDER_TEST_TIMEOUT_MS))
+    .action(async (providerId: string, options: { model?: string; timeout: string }) => {
+      const resolved = resolveDeps(deps);
+      await runAction(resolved, () =>
+        handleProviderTest(resolved, providerId, {
+          model: options.model,
+          timeoutMs: Number.parseInt(options.timeout, 10),
+        }),
+      );
     });
 
   const catalog = provider

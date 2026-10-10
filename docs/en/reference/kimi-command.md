@@ -389,6 +389,73 @@ kimi provider catalog list anthropic          # Browse available models first
 kimi provider catalog add anthropic --api-key sk-ant-... --default-model claude-opus-4-7
 ```
 
+#### `kimi provider add-manual`
+
+Add a provider you describe yourself — the "paste a base URL and a key" path. This is the shell equivalent of the `/provider` → **Add New Platform** dialog.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider ID to create |
+| `--type <type>` | **Required.** Wire protocol: `openai`, `openai_responses`, `anthropic` or `google-genai` |
+| `--base-url <url>` | **Required.** Endpoint base URL. Must be `http(s)` and must not embed a username or password |
+| `--api-key <key>` | Provider API key. Falls back to `KIMI_REGISTRY_API_KEY` if not provided; exactly one of `--api-key` / `--api-key-env` is required |
+| `--api-key-env <VAR>` | Name of the environment variable holding the key |
+
+The provider's models are discovered from the endpoint. Discovery is best-effort: if it fails the provider is still saved and the reason is printed, so you can still configure models by hand.
+
+```sh
+kimi provider add-manual my-gateway \
+  --type openai \
+  --base-url https://gateway.example.com/v1 \
+  --api-key-env MY_GATEWAY_KEY
+```
+
+#### `kimi provider add-builtin <providerId>`
+
+Configure a built-in provider by ID — the same endpoints the `/provider` menu lists under known providers.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Built-in provider ID, e.g. `openai`, `anthropic`, `kimi`, `cline` |
+| `--api-key <key>` | API key. Falls back to `KIMI_REGISTRY_API_KEY`; exactly one of `--api-key` / `--api-key-env` is required |
+| `--api-key-env <VAR>` | Read the API key from this environment variable instead of storing it |
+
+```sh
+kimi provider add-builtin cline --api-key YOUR_API_KEY
+```
+
+#### `kimi provider edit <providerId>`
+
+Change the fields of a provider that already exists. Only the flags you pass are written; the rest keep their current values. By default the model list is re-read from the new endpoint and the change is reported, so a typo in a base URL fails here rather than at the first request.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to edit |
+| `--type <type>` | New wire protocol: `openai`, `openai_responses`, `anthropic` or `google-genai` |
+| `--base-url <url>` | New endpoint base URL. Must be `http(s)` and must not embed a username or password |
+| `--api-key <key>` | New API key. Falls back to `KIMI_REGISTRY_API_KEY` |
+| `--api-key-env <VAR>` | Read the key from this environment variable instead of storing it |
+| `--no-refresh` | Apply the change without re-reading the model list |
+
+```sh
+kimi provider edit my-gateway --base-url https://gateway.example.com/v2
+```
+
+#### `kimi provider test <providerId>`
+
+Diagnose a configured provider without sending a real conversation. The probe runs five stages and prints each one: configuration, credential resolution, endpoint reachability, model discovery, and a minimal request against one model alias. Unauthorized, forbidden, not-found, rate-limited, timed-out and malformed-response outcomes are reported distinctly. The API key is never printed, including when an upstream error message quotes it back.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to probe |
+| `--model <alias>` | Model alias for the minimal request. Defaults to the provider's first configured alias |
+| `--timeout <ms>` | Per-request network timeout in milliseconds; defaults to `10000` |
+
+```sh
+kimi provider test cline
+kimi provider test my-gateway --model my-gateway/auto --timeout 30000
+```
+
 ## Next steps
 
 - [Slash Commands](./slash-commands.md) — Quick reference for control commands in the interactive TUI

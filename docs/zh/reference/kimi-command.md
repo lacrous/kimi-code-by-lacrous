@@ -389,6 +389,73 @@ kimi provider catalog list anthropic          # 先看可选的模型
 kimi provider catalog add anthropic --api-key sk-ant-... --default-model claude-opus-4-7
 ```
 
+#### `kimi provider add-manual`
+
+手工添加一个供应商——就是"粘贴 base URL 和密钥"这条路，等价于 `/provider` → **Add New Platform** 对话框。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要创建的供应商 id |
+| `--type <type>` | **必填。** 协议类型：`openai`、`openai_responses`、`anthropic` 或 `google-genai` |
+| `--base-url <url>` | **必填。** 端点 base URL，必须是 http(s)，且不得内嵌用户名或密码 |
+| `--api-key <key>` | 供应商 API key。未传时回退到 `KIMI_REGISTRY_API_KEY`；`--api-key` / `--api-key-env` 二选一且必选其一 |
+| `--api-key-env <VAR>` | 从该环境变量读取 API key，而不是直接存进配置 |
+
+模型列表会从该端点自动发现。发现是尽力而为的：失败时供应商依然会保存，并打印失败原因，你仍可手工配置模型。
+
+```sh
+kimi provider add-manual my-gateway \
+  --type openai \
+  --base-url https://gateway.example.com/v1 \
+  --api-key-env MY_GATEWAY_KEY
+```
+
+#### `kimi provider add-builtin <providerId>`
+
+按 id 配置一个内置供应商——端点与 `/provider` 菜单里"已知供应商"列出的完全一致。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 内置供应商 id，如 `openai`、`anthropic`、`kimi`、`cline` |
+| `--api-key <key>` | API key。未传时回退到 `KIMI_REGISTRY_API_KEY`；`--api-key` / `--api-key-env` 二选一且必选其一 |
+| `--api-key-env <VAR>` | 从该环境变量读取 API key，而不是直接存进配置 |
+
+```sh
+kimi provider add-builtin cline --api-key YOUR_API_KEY
+```
+
+#### `kimi provider edit <providerId>`
+
+修改已存在供应商的字段。只有你传入的参数会被写入，其余保持当前值。默认会从新端点重新读取模型列表并汇报结果，这样 base URL 打错字会在这一步暴露，而不是等到第一次请求。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要修改的供应商 id |
+| `--type <type>` | 新的协议类型：`openai`、`openai_responses`、`anthropic` 或 `google-genai` |
+| `--base-url <url>` | 新的端点 base URL，必须是 http(s)，且不得内嵌用户名或密码 |
+| `--api-key <key>` | 新的 API key。未传时回退到 `KIMI_REGISTRY_API_KEY` |
+| `--api-key-env <VAR>` | 从该环境变量读取密钥，而不是直接存进配置 |
+| `--no-refresh` | 应用修改但不重新读取模型列表 |
+
+```sh
+kimi provider edit my-gateway --base-url https://gateway.example.com/v2
+```
+
+#### `kimi provider test <providerId>`
+
+在不发送真实会话的前提下诊断一个已配置的供应商。探测分五个阶段并逐项打印：配置、凭证解析、端点可达性、模型发现，以及对某个模型别名发起的最小请求。未授权、禁止访问、未找到、被限流、超时和响应格式错误会被分别报出。API key 绝不会被打印，即使上游错误信息里把它原样回显也会先脱敏。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要探测的供应商 id |
+| `--model <alias>` | 最小请求使用的模型别名，默认取该供应商配置中的第一个别名 |
+| `--timeout <ms>` | 单次请求的网络超时毫秒数，默认 `10000` |
+
+```sh
+kimi provider test cline
+kimi provider test my-gateway --model my-gateway/auto --timeout 30000
+```
+
 ## 下一步
 
 - [斜杠命令](./slash-commands.md) — 交互式 TUI 内的控制命令速查
