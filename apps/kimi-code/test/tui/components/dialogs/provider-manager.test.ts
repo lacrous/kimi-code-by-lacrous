@@ -29,6 +29,7 @@ function makeComponent(overrides: Partial<ProviderManagerOptions> = {}): Provide
     onAdd: vi.fn(),
     onSelectSource: vi.fn(),
     onDeleteSource: vi.fn(),
+    onEditKey: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
   });
@@ -105,6 +106,10 @@ describe('ProviderManagerComponent', () => {
     expect(isBorder(lines[titleIdx + 1])).toBe(false);
     expect(lines[titleIdx + 1]).toContain('navigate');
     expect(lines[titleIdx + 1]).toContain('Esc cancel');
+    // Every verb the dialog binds must be advertised, or the key is a secret.
+    expect(lines[titleIdx + 1]).toContain('Enter select');
+    expect(lines[titleIdx + 1]).toContain('E edit key');
+    expect(lines[titleIdx + 1]).toContain('D delete');
     // Blank line separates the hint from the body, exactly like the model dialog.
     expect(lines[titleIdx + 2]).toBe('');
     // Only the top and bottom full-width borders remain — two, not three.
@@ -124,6 +129,55 @@ describe('ProviderManagerComponent', () => {
     expect(rendered(component)).toContain('[y/N]');
     component.handleInput('y');
     expect(onDeleteSource).toHaveBeenCalledWith(['acme']);
+  });
+
+  it('changes the API key of the highlighted provider via the E key, with no confirm step', () => {
+    const onEditKey = vi.fn();
+    const onDeleteSource = vi.fn();
+    const component = makeComponent({
+      providers: {
+        acme: { baseUrl: 'https://acme.test' },
+      } as unknown as Record<string, ProviderConfig>,
+      activeProviderId: 'acme',
+      onEditKey,
+      onDeleteSource,
+    });
+    component.handleInput('E');
+    expect(onEditKey).toHaveBeenCalledWith(['acme'], 'acme');
+    // The masked key dialog is itself the confirmation — a [y/N] prompt would
+    // only add ceremony.
+    expect(rendered(component)).not.toContain('[y/N]');
+    expect(onDeleteSource).not.toHaveBeenCalled();
+  });
+
+  it('passes every provider of a grouped custom-registry row to onEditKey', () => {
+    // One registry fetch contributed several providers that all authenticate
+    // with the same source key, so the new key must be written to all of them.
+    const source = { kind: 'apiJson', url: 'https://reg.test/api.json', apiKey: 'k' };
+    const onEditKey = vi.fn();
+    const component = makeComponent({
+      providers: {
+        'reg-one': { baseUrl: 'https://reg.test/v1', source },
+        'reg-two': { baseUrl: 'https://reg.test/v2', source },
+      } as unknown as Record<string, ProviderConfig>,
+      onEditKey,
+    });
+    component.handleInput('e');
+    expect(onEditKey).toHaveBeenCalledWith(['reg-one', 'reg-two'], 'reg.test/api.json');
+  });
+
+  it('ignores the E key on [ Add New Platform ]', () => {
+    const onEditKey = vi.fn();
+    const component = makeComponent({
+      providers: {
+        acme: { baseUrl: 'https://acme.test' },
+      } as unknown as Record<string, ProviderConfig>,
+      activeProviderId: 'acme',
+      onEditKey,
+    });
+    component.handleInput(DOWN);
+    component.handleInput('E');
+    expect(onEditKey).not.toHaveBeenCalled();
   });
 
   it('selects the highlighted provider on Enter', () => {

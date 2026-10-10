@@ -192,6 +192,7 @@ export {
   CUSTOM_REGISTRY_DEFAULT_MAX_CONTEXT,
   customRegistryReplacementKeys,
   fetchCustomRegistry,
+  readCustomRegistrySource,
   removeCustomRegistryEntries,
   removeCustomRegistryProvider,
 } from './custom-registry';

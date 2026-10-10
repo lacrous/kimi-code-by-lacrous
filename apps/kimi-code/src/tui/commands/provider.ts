@@ -13,6 +13,7 @@ import {
   type ProviderConfig,
   type ThinkingEffort,
 } from '@moonshot-ai/kimi-code-sdk';
+import { readCustomRegistrySource } from '@moonshot-ai/kimi-code-oauth';
 
 import { createKimiCodeUserAgent } from '#/cli/version';
 import { fetchCatalogOrBuiltIn } from '#/utils/catalog-fetch';
@@ -85,6 +86,11 @@ function buildProviderManagerOptions(host: SlashCommandHost): ProviderManagerOpt
     onDeleteSource: (providerIds) => {
       void handleProviderManagerDeleteSource(host, providerIds).catch((error: unknown) => {
         host.showError(`Remove provider failed: ${formatErrorMessage(error)}`);
+      });
+    },
+    onEditKey: (providerIds, label) => {
+      void handleProviderEditKey(host, providerIds, label).catch((error: unknown) => {
+        host.showError(`Change API key failed: ${formatErrorMessage(error)}`);
       });
     },
     onClose: () => {
@@ -161,6 +167,97 @@ async function handleProviderManagerDeleteSource(
       host.showError(`Failed to delete provider ${providerId}: ${msg}`);
     }
   }
+  reopenProviderManager(host);
+}
+
+/**
+ * Replaces the API key behind a `/provider` row.
+ *
+ * Rows group several providers when they came from one custom-registry
+ * (api.json) fetch, and that fetch is authenticated with a single key stored
+ * on every record of the row — so the new key is written to all of them.
+ *
+ * A key swap cannot fail on its own, so the models are re-read afterwards: a
+ * rejected key surfaces here instead of on the next request. The refresh is
+ * scoped to one provider because that is what the orchestrator accepts; for a
+ * registry row the fetch itself is authenticated by the new key, which is what
+ * validates the whole row.
+ */
+async function handleProviderEditKey(
+  host: SlashCommandHost,
+  providerIds: readonly string[],
+  label: string,
+): Promise<void> {
+  const config = await host.harness.getConfig();
+  const entries = providerIds.flatMap((id) => {
+    const record = config.providers[id];
+    return record === undefined ? [] : [{ id, record }];
+  });
+
+  // An OAuth record has no hand-editable key: its credential comes from the
+  // token store and the next token refresh would overwrite anything written
+  // here, so it is changed through `/login`. Open Platform rows are deliberately
+  // *not* excluded — those hold a real API key and `/login` for them is this
+  // same prompt, so refusing here would deny a key change that works.
+  if (entries.length === 0 || entries.some((e) => e.record.oauth !== undefined)) {
+    host.showError(`${label} signs in with an account, not an API key — use /login to change it.`);
+    reopenProviderManager(host);
+    return;
+  }
+
+  const viaRegistry = readCustomRegistrySource(entries[0]!.record) !== undefined;
+  const apiKey = await promptApiKey(host, label, [
+    `Replaces the key currently saved for "${label}".`,
+    viaRegistry
+      ? 'The registry that declares its models is fetched with the new key.'
+      : 'Your key will be saved to ~/.kimi-code/config.toml',
+  ]);
+  if (apiKey === undefined) {
+    reopenProviderManager(host);
+    return;
+  }
+
+  const providers = { ...config.providers };
+  for (const { id, record } of entries) {
+    if (readCustomRegistrySource(record) !== undefined) {
+      providers[id] = { ...record, source: { ...record.source, apiKey } };
+      continue;
+    }
+    // A spread cannot delete: leaving a stale `apiKeyEnv` beside the inline key
+    // would leave the record carrying both, which the runtime rejects.
+    const next: Record<string, unknown> = { ...record, apiKey };
+    delete next['apiKeyEnv'];
+    providers[id] = next as ProviderConfig;
+  }
+  await host.harness.setConfig({
+    providers,
+    models: config.models,
+    defaultModel: config.defaultModel,
+    thinking: config.thinking,
+  });
+
+  const target = entries[0]!.id;
+  const spinner = host.showLoginProgressSpinner(`Refreshing models for ${label}`);
+  let refreshed: RefreshResult;
+  try {
+    refreshed = await refreshAllProviderModels(buildDiscoveryHost(host), {
+      providerId: target,
+    });
+  } catch (error) {
+    spinner.stop({ ok: false, label: 'Key saved; model refresh failed.' });
+    host.showError(`Key saved for ${label}, refreshing models failed: ${formatErrorMessage(error)}`);
+    return;
+  }
+
+  const failure = refreshed.failed.find((f) => f.provider === target);
+  if (failure !== undefined) {
+    spinner.stop({ ok: false, label: 'Key saved; model refresh failed.' });
+    host.showError(`Key saved for ${label}, refreshing models failed: ${failure.reason}`);
+    return;
+  }
+  spinner.stop({ ok: true, label: `${label} key updated.` });
+
+  await host.authFlow.refreshConfigAfterLogin();
   reopenProviderManager(host);
 }
 

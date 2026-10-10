@@ -17,6 +17,8 @@ Lacrous Kimi Code CLI 支持同时接入多家模型供应商服务，模型在�
 
 所有供应商默认以流式方式与模型交互。thinking、视觉、工具调用等能力按模型名前缀自动匹配，通常不需要手动声明。
 
+**端点规则**：`base_url` 必须是 http(s)，且不得内嵌用户名或密码——密钥请写进 `api_key` / `api_key_env`，这样它才不会出现在配置文件、备份或调试输出里。明文 `http://` 只对公网无法访问的主机放行：`localhost`、`*.localhost`、`127.0.0.1`、`::1`，以及私有网段 `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`、`169.254.0.0/16`、`fc00::/7`、`fe80::/10`。部署在公网主机上的网关必须使用 `https`。
+
 **凭证优先级**：`api_key` 或 `api_key_env`（互斥替代项，只能设置其中一个）> `[providers.<name>.env]` 子表键（两者都不存在时才读）> 全部缺失时启动报错。除显式声明的 `api_key_env` 外，CLI 不会从 shell 环境变量自动取凭证，详见[配置覆盖：供应商凭证](./overrides.md#供应商凭证)。
 
 ## `/provider` — 交互式供应商管理
@@ -28,8 +30,11 @@ Lacrous Kimi Code CLI 支持同时接入多家模型供应商服务，模型在�
 管理器按来源把供应商显示为一行行条目。操作方式：
 
 - ↑/↓ 移动光标，←/→ 翻页
+- `e` 键替换当前供应商已保存的 API 密钥，按 `Enter` 确认——密钥全程不在屏幕上显示，并会用新密钥刷新该供应商的模型
 - `d` 键删除当前供应商（有 `[y/N]` 确认）
 - 在 `[ Add New Platform ]` 行按 Enter 添加新供应商
+
+用账号而非 API 密钥认证的条目——`/login` 登录的 OAuth 平台——会拒绝该操作并提示改用 `/login`。它们的凭证来自登录会话，在这里手填的密钥会在下次会话刷新时被覆盖。Kimi 平台条目保存的是真实的 API 密钥，因此它的密钥在这里和其他供应商一样可以修改。
 
 添加时有两条路径：
 
@@ -99,6 +104,7 @@ api_key = "sk-xxxxx"
 
 本小节说明 `openai` 供应商把 API 密钥放在哪里，以及如何关掉凭证。默认情况下密钥以 `Authorization: Bearer <key>` 发送，这也是 OpenAI 官方期望的形式。但本地服务器和第三方网关未必一致：有的从你指定的请求头里读密钥，有的则完全不校验。`auth_scheme` 子表就是在这些情况之间做选择。
 
+- `kind = "bearer"` —— 以 `Authorization: Bearer <key>` 发送 API 密钥，这是默认行为；显式写出来是为了让配置意图一目了然
 - `kind = "custom-header"` —— 把 API 密钥放进 `header` 指定的请求头，并且不发送 `Authorization` 头
 - `kind = "none"` —— 完全不发送凭证，适用于不做校验的本地或自托管服务器
 
@@ -114,8 +120,10 @@ header = "x-api-key"
 
 密钥的值仍然来自 `api_key` 或 `api_key_env`，`auth_scheme` 只改变凭证发送的位置，不改变凭证本身。`custom-header` 缺少 `header` 属于配置错误。
 
+`auth_scheme` 同样适用于 `anthropic` 类型，在那里会以相同的方式替换 SDK 默认的 `x-api-key` 请求头。
+
 ::: warning 注意
-`auth_scheme` 仅适用于 `openai` 和 `openai_responses` 类型。写在 `anthropic`、`google-genai` 或 `vertexai` 上会直接报配置错误，不会被静默忽略。
+`auth_scheme` 仅适用于 `openai`、`openai_responses` 和 `anthropic` 类型。写在 `google-genai` 或 `vertexai` 上会直接报配置错误，不会被静默忽略。
 :::
 
 ## `openai_responses`

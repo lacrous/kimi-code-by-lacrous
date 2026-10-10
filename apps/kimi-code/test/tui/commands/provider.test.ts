@@ -20,6 +20,7 @@ import {
 import { handleProviderCommand, setDefaultModel } from '#/tui/commands/provider';
 import { ApiKeyInputDialogComponent } from '#/tui/components/dialogs/api-key-input-dialog';
 import { ChoicePickerComponent } from '#/tui/components/dialogs/choice-picker';
+import { ProviderManagerComponent } from '#/tui/components/dialogs/provider-manager';
 import { TabbedModelSelectorComponent } from '#/tui/components/dialogs/tabbed-model-selector';
 import { BUILT_IN_PROVIDERS } from '#/utils/built-in-providers';
 import {
@@ -202,11 +203,13 @@ function makeProviderHost() {
       'acme/opus': { provider: 'acme', model: 'opus', maxContextSize: 200_000 },
       'other/thing': { provider: 'other', model: 'thing', maxContextSize: 200_000 },
     },
+    // Annotated because tests add platforms to it at runtime; a literal type
+    // would reject the extra keys the `/provider` rows are built from.
     availableProviders: {
       empty: { type: 'openai' },
       acme: { type: 'openai' },
       other: { type: 'openai' },
-    },
+    } as Record<string, Record<string, unknown>>,
   };
   const mounted: (Component & Focusable)[] = [];
   // The add flow reads config before it writes, so getConfig/removeProvider have
@@ -256,7 +259,7 @@ function makeProviderHost() {
     showError: ReturnType<typeof vi.fn>;
     showLoginProgressSpinner: ReturnType<typeof vi.fn>;
   };
-  return { host, mounted, appState, spinnerStop };
+  return { host, mounted, appState, config, spinnerStop };
 }
 
 function press(panel: Component & Focusable, keys: readonly string[]): void {
@@ -429,6 +432,102 @@ describe('custom endpoint provider', () => {
     // Invalid URL: the dialog reports it in place instead of writing anything.
     expect(rig.mounted[2]!.render(80).join('\n')).toContain('Base URL must be http(s)');
     expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe('provider key edit', () => {
+  it('replaces the key of the highlighted provider and refreshes its models', async () => {
+    const rig = makeProviderHost();
+    await handleProviderCommand(rig.host);
+
+    // Rows are [empty, acme, other(current), add]; one hop up lands on `acme`.
+    press(rig.mounted[0]!, [UP, 'e']);
+
+    await vi.waitFor(() => {
+      expect(rig.mounted[1]).toBeInstanceOf(ApiKeyInputDialogComponent);
+    });
+    press(rig.mounted[1]!, [...typed('NEW_API_KEY'), ENTER]);
+
+    await vi.waitFor(() => {
+      expect(rig.host.harness.setConfig).toHaveBeenCalled();
+    });
+    // The stale key is replaced, not merged beside: `apiKeyEnv` would win over
+    // `apiKey` and the edit would look like it silently did nothing.
+    expect(rig.config.providers['acme']).toEqual({ type: 'openai', apiKey: 'NEW_API_KEY' });
+    expect(rig.host.harness.setConfig.mock.calls.at(-1)![0]).toEqual(
+      expect.objectContaining({
+        providers: expect.objectContaining({
+          acme: { type: 'openai', apiKey: 'NEW_API_KEY' },
+        }),
+      }),
+    );
+
+    // A key nobody verified would only surface on the next request, so the
+    // models are re-read with it right away.
+    await vi.waitFor(() => {
+      expect(rig.spinnerStop).toHaveBeenCalledWith({ ok: true, label: 'acme key updated.' });
+    });
+    expect(rig.host.authFlow.refreshConfigAfterLogin).toHaveBeenCalled();
+    expect(rig.host.showError).not.toHaveBeenCalled();
+  });
+
+  it('sends an account-backed provider to /login instead of typing a key', async () => {
+    const rig = makeProviderHost();
+    rig.config.providers['acme'] = {
+      type: 'openai',
+      oauth: { storage: 'file', key: 'kimi-code' },
+    };
+    await handleProviderCommand(rig.host);
+
+    // Rows are [empty, acme, other(current), add]; one hop up lands on `acme`.
+    press(rig.mounted[0]!, [UP, 'e']);
+
+    await vi.waitFor(() => {
+      expect(rig.host.showError).toHaveBeenCalledWith(expect.stringContaining('/login'));
+    });
+    // Its credential comes from the token store, so a hand-typed key would be
+    // overwritten on the next token refresh — nothing is written.
+    expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+    expect(rig.mounted).toHaveLength(2);
+    expect(rig.mounted[1]).toBeInstanceOf(ProviderManagerComponent);
+  });
+
+  it('lets a Kimi Platform row change its key like any other provider', async () => {
+    const rig = makeProviderHost();
+    rig.config.providers['moonshot-cn'] = { type: 'openai', apiKey: 'OLD' };
+    rig.appState.availableProviders['moonshot-cn'] = { type: 'openai', apiKey: 'OLD' };
+    await handleProviderCommand(rig.host);
+
+    // Rows are [empty, acme, other(current), Kimi Platform, add]; one hop down
+    // from the active row lands on the appended platform.
+    press(rig.mounted[0]!, [DOWN, 'e']);
+
+    // `/login` for a Kimi Platform is this same key prompt followed by a model
+    // refresh, so refusing here would deny a change that works.
+    await vi.waitFor(() => {
+      expect(rig.mounted[1]).toBeInstanceOf(ApiKeyInputDialogComponent);
+    });
+    press(rig.mounted[1]!, [...typed('NEW_PLATFORM_KEY'), ENTER]);
+
+    await vi.waitFor(() => {
+      expect(rig.config.providers['moonshot-cn']).toEqual({
+        type: 'openai',
+        apiKey: 'NEW_PLATFORM_KEY',
+      });
+    });
+    expect(rig.host.showError).not.toHaveBeenCalled();
+  });
+
+  it('ignores the key shortcut on the add row', async () => {
+    const rig = makeProviderHost();
+    await handleProviderCommand(rig.host);
+
+    // One hop down from the active row lands on `[ Add New Platform ]`.
+    press(rig.mounted[0]!, [DOWN, 'e']);
+
+    expect(rig.mounted).toHaveLength(1);
+    expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+    expect(rig.host.showError).not.toHaveBeenCalled();
   });
 });
 

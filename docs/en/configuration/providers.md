@@ -17,6 +17,8 @@ The `type` field in the `providers` table determines which protocol implementati
 
 All providers communicate with models in streaming mode by default. Capabilities such as thinking, vision, and tool use are matched automatically by model name prefix, so you typically do not need to declare them manually.
 
+**Endpoint rules**: `base_url` must be `http(s)` and must not embed a username or password — put the key in `api_key` / `api_key_env` instead, so it never lands in the config file, a backup, or a debug dump. Plain `http://` is accepted only for hosts that cannot be reached from the public internet: `localhost`, `*.localhost`, `127.0.0.1`, `::1`, and the private ranges `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `fc00::/7` and `fe80::/10`. A gateway on a public host must use `https`.
+
 **Credential priority**: `api_key` or `api_key_env` (mutually exclusive alternatives — set exactly one) > `[providers.<name>.env]` sub-table key (only when neither is present) > if all are absent, startup fails with an error. Except for the explicitly declared `api_key_env`, the CLI does not fall back to shell environment variables for credentials. See [Config overrides: provider credentials](./overrides.md#provider-credentials).
 
 ## `/provider` — interactive provider management
@@ -28,8 +30,11 @@ Prefer not to edit TOML by hand? Type `/provider` in the TUI to open the **provi
 The manager displays providers as a list of entries grouped by source. Navigation:
 
 - ↑/↓ to move the cursor, ←/→ to page
+- `e` to replace the API key saved for the current provider, then `Enter` to confirm — the key is never shown on screen, and the provider's models are refreshed with it
 - `d` to delete the current provider (with `[y/N]` confirmation)
 - Press Enter on the `[ Add New Platform ]` row to add a new provider
+
+Entries that authenticate with an account rather than an API key — OAuth platforms from `/login` — refuse the edit and point you at `/login` instead. Their credential comes from the login session, so a key you typed here would be overwritten the next time the session refreshes. Kimi Platform entries do hold a real API key, so their key is editable here exactly like any other provider's.
 
 Two paths when adding:
 
@@ -99,6 +104,7 @@ api_key = "sk-xxxxx"
 
 This subsection covers where an `openai` provider puts the API key, and how to turn the credential off. By default the key travels as `Authorization: Bearer <key>`, which is what OpenAI itself expects. Local servers and third-party gateways often disagree: some read the key from a header you name, and some check nothing at all. The `auth_scheme` table selects between those cases.
 
+- `kind = "bearer"` — send the API key as `Authorization: Bearer <key>`, the default behavior; name it explicitly when you want the intent written down in the config
 - `kind = "custom-header"` — send the API key in the header named by `header`, and send no `Authorization` header
 - `kind = "none"` — send no credential at all, for a local or self-hosted server that does not check one
 
@@ -114,8 +120,10 @@ header = "x-api-key"
 
 `api_key` or `api_key_env` still supplies the value that lands in that header — `auth_scheme` only changes where the credential goes, not what it is. A `custom-header` scheme without `header` is a configuration error.
 
+`auth_scheme` also applies to the `anthropic` type, where it replaces the SDK's default `x-api-key` header the same way.
+
 ::: warning
-`auth_scheme` applies to the `openai` and `openai_responses` types only. Setting it on `anthropic`, `google-genai`, or `vertexai` fails with a configuration error instead of being silently ignored.
+`auth_scheme` applies to the `openai`, `openai_responses` and `anthropic` types only. Setting it on `google-genai` or `vertexai` fails with a configuration error instead of being silently ignored.
 :::
 
 ## `openai_responses`

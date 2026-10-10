@@ -15,6 +15,9 @@
  *   - ← / → · PgUp/PgDn page
  *   - Enter             on a source row → `onSelectSource(providerIds, label)`
  *                         on `[ Add New Platform ]` → `onAdd()`
+ *   - E                 replace the API key behind a source
+ *                         on a source row → `onEditKey(providerIds, label)`
+ *                         on `[ Add New Platform ]` → ignored
  *   - D                 delete with inline `[y/N]` confirmation
  *                         on a source row → `onDeleteSource(providerIds)`
  *                         on `[ Add New Platform ]` → ignored
@@ -34,7 +37,7 @@ import type { ProviderConfig } from '@moonshot-ai/kimi-code-sdk';
 import {
   getOpenPlatformById,
   isOpenPlatformId,
-  type CustomRegistrySource,
+  readCustomRegistrySource,
 } from '@moonshot-ai/kimi-code-oauth';
 import {
   Container,
@@ -71,6 +74,11 @@ export interface ProviderManagerOptions {
    *  fetch / standalone). Passed the full provider-id list so the host
    *  doesn't have to re-derive the source grouping. */
   readonly onDeleteSource: (providerIds: readonly string[]) => void;
+  /** Replace the credential behind a source. The masked input dialog the host
+   *  opens *is* the confirmation, so no `[y/N]` substate is needed here.
+   *  Passed the full provider-id list so one key edit can cover a whole
+   *  custom-registry row, plus the row label for the host's messages. */
+  readonly onEditKey: (providerIds: readonly string[], label: string) => void;
   readonly onClose: () => void;
 }
 
@@ -97,26 +105,7 @@ type Row = SourceRow | AddRow;
 
 const ADD_ROW_LABEL = '[ Add New Platform ]';
 const PAGE_SIZE = 8;
-const HEADER_HINT = '↑↓ navigate · Enter select · D delete · Esc cancel';
-
-// Narrows a `ProviderConfig` blob to a `CustomRegistrySource` payload.
-// Mirrors `readCustomRegistrySource` in `kimi-tui.ts`. We can't import
-// that helper because it lives in the host and would create a cyclic
-// dependency on the component's container; duplicating ~15 lines is cheap.
-function readCustomRegistrySource(provider: unknown): CustomRegistrySource | undefined {
-  if (typeof provider !== 'object' || provider === null) return undefined;
-  const source = (provider as { readonly source?: unknown }).source;
-  if (typeof source !== 'object' || source === null) return undefined;
-  const candidate = source as {
-    readonly kind?: unknown;
-    readonly url?: unknown;
-    readonly apiKey?: unknown;
-  };
-  if (candidate.kind !== 'apiJson') return undefined;
-  if (typeof candidate.url !== 'string' || candidate.url.length === 0) return undefined;
-  if (typeof candidate.apiKey !== 'string') return undefined;
-  return { kind: 'apiJson', url: candidate.url, apiKey: candidate.apiKey };
-}
+const HEADER_HINT = '↑↓ navigate · Enter select · E edit key · D delete · Esc cancel';
 
 /**
  * Pretty-print a URL for the source-row label. Strips the scheme and
@@ -325,6 +314,16 @@ export class ProviderManagerComponent extends Container implements Focusable {
     const ch = printableChar(data);
     if (ch === 'd' || ch === 'D') {
       this.armDeleteConfirm();
+      return;
+    }
+
+    // Replace the credential behind the highlighted provider with the E key.
+    // No confirm substate: the host's masked key dialog already requires a
+    // deliberate entry, so an extra [y/N] would only add ceremony.
+    if (ch === 'e' || ch === 'E') {
+      const selected = rows[this.selectedIndex];
+      if (selected === undefined || selected.kind === 'add') return;
+      this.opts.onEditKey(selected.providerIds, selected.label);
     }
   }
 
