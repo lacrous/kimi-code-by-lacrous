@@ -37,16 +37,25 @@ export const OAuthRefSchema = z.object({
 
 export const ModelSourceSchema = z.enum(['static', 'discover', 'oauth-catalog']);
 
-export const ProviderAuthSchemeKindSchema = z.enum(['bearer', 'custom-header', 'none']);
+export const ProviderAuthSchemeKindSchema = z.enum([
+  'bearer',
+  'api-key',
+  'custom-header',
+  'none',
+]);
 
 export const ProviderAuthSchemeSchema = z
   .object({
     kind: ProviderAuthSchemeKindSchema,
     header: z.string().min(1).optional(),
   })
-  .refine((scheme) => scheme.kind !== 'custom-header' || scheme.header !== undefined, {
-    error: 'authScheme.kind "custom-header" requires authScheme.header to name the header.',
-  });
+  .refine(
+    (scheme) =>
+      scheme.kind !== 'custom-header' || scheme.header !== undefined,
+    {
+      error: 'authScheme.kind "custom-header" requires authScheme.header to name the header.',
+    },
+  );
 
 const StringRecordSchema = z.record(z.string(), z.string());
 

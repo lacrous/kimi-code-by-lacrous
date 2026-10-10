@@ -8,7 +8,7 @@ export interface LlmConnection {
   readonly vertexai?: boolean;
 }
 
-export type LlmAuthSchemeKind = 'bearer' | 'custom-header' | 'none';
+export type LlmAuthSchemeKind = 'bearer' | 'api-key' | 'custom-header' | 'none';
 
 export interface LlmAuthScheme {
   kind: LlmAuthSchemeKind;

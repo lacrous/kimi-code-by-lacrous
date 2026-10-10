@@ -1091,7 +1091,9 @@ describe('kimi provider auth', () => {
     const { stderr, exitCodes } = await runAuth(['mygw']);
 
     expect(failedExit(exitCodes)).toBe(true);
-    expect(stderr.join('')).toContain('Nothing to change. Pass --api-key or --api-key-env.');
+    expect(stderr.join('')).toContain(
+      'Nothing to change. Pass --api-key, --api-key-env, --auth-scheme or --auth-header.',
+    );
     expect(stderr.join('')).not.toContain('--base-url');
   });
 

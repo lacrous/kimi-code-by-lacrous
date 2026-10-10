@@ -47,6 +47,8 @@ const ESC = String.fromCodePoint(27);
 const ENTER = '\r';
 const UP = `${ESC}[A`;
 const DOWN = `${ESC}[B`;
+const LEFT = `${ESC}[D`;
+const RIGHT = `${ESC}[C`;
 const TAB = '\t';
 
 function makeHost(
@@ -309,7 +311,11 @@ describe('handleProviderCommand', () => {
     // Rows are [empty, acme, other(current), add]; two hops up lands on `empty`.
     press(mounted[0]!, [UP, UP, ENTER]);
 
-    expect(host.showError).toHaveBeenCalledWith(expect.stringContaining('empty'));
+    // A saved provider with no models is first refreshed in place; the mock
+    // reports no models discovered, so the error lands after the refresh.
+    await vi.waitFor(() => {
+      expect(host.showError).toHaveBeenCalledWith(expect.stringContaining('empty'));
+    });
     expect(mounted).toHaveLength(2);
     expect(mounted[1]).not.toBeInstanceOf(TabbedModelSelectorComponent);
   });
@@ -352,18 +358,29 @@ function typed(text: string): string[] {
 /**
  * Drives the whole "Custom endpoint" path. Resolves once the provider record has
  * been persisted; discovery and the model pick are awaited by the callers that
- * care about them.
+ * care about them. The dialog has three fields (URL → key → auth); Enter on
+ * the auth field submits.
  */
 async function addCustomEndpoint(
   rig: ReturnType<typeof makeProviderHost>,
   baseUrl: string,
   apiKey: string | undefined,
+  extraAuthKeys: readonly string[] = [],
 ): Promise<void> {
   const { mounted } = rig;
   await openCustomEndpointDialog(rig);
 
-  // Enter on the URL field advances to the key field, Enter on it submits.
-  press(mounted[2]!, [...typed(baseUrl), ENTER, ...typed(apiKey ?? ''), ENTER]);
+  // Enter on the URL field advances to the key field, Enter on it advances to
+  // the auth row, and Enter on the auth row submits. Extra keys (left/right)
+  // cycle the auth scheme before submitting.
+  press(mounted[2]!, [
+    ...typed(baseUrl),
+    ENTER,
+    ...typed(apiKey ?? ''),
+    ENTER,
+    ...extraAuthKeys,
+    ENTER,
+  ]);
   await vi.waitFor(() => {
     expect(rig.store.setConfigCalls.length).toBeGreaterThan(0);
   });
@@ -387,11 +404,13 @@ describe('custom endpoint provider', () => {
 
     const patch = rig.store.setConfigCalls.at(-1)! as KimiConfig;
     // The id comes from the hostname, never from the user, and the wire is
-    // OpenAI-compatible so the key needs no protocol picker.
+    // OpenAI-compatible so the key needs no protocol picker. The dialog lands
+    // on the first auth option (Bearer), which is what a pasted key means.
     expect(patch.providers['api-example']).toEqual({
       type: 'openai',
       baseUrl: 'https://api.example.com/v1',
       apiKey: 'YOUR_API_KEY',
+      authScheme: { kind: 'bearer' },
     });
     expect(rig.spinnerStop).toHaveBeenCalledWith({
       ok: true,
@@ -431,7 +450,9 @@ describe('custom endpoint provider', () => {
     const rig = makeProviderHost();
     await openCustomEndpointDialog(rig);
 
-    press(rig.mounted[2]!, [...typed('ftp://api.example.com'), ENTER, ENTER]);
+    // Three fields: URL → key → auth. ENTER on the auth row submits, which is
+    // where the URL is finally validated.
+    press(rig.mounted[2]!, [...typed('ftp://api.example.com'), ENTER, ENTER, ENTER]);
 
     // Invalid URL: the dialog reports it in place instead of writing anything.
     expect(rig.mounted[2]!.render(80).join('\n')).toContain('Base URL must be http(s)');
@@ -635,6 +656,33 @@ describe('custom provider helpers', () => {
     });
     expect(buildCustomProviderRecord('http://localhost:11434/v1', undefined).authScheme).toEqual({
       kind: 'none',
+    });
+  });
+
+  it('records the auth scheme the dialog picked for a keyed endpoint', async () => {
+    const rig = makeProviderHost();
+    seedModel(rig.appState, 'api-example/sonnet');
+
+    // Open the dialog, then cycle the auth row to "API key" before submitting.
+    await openCustomEndpointDialog(rig);
+    press(rig.mounted[2]!, [
+      ...typed('https://api.example.com/v1'),
+      ENTER,
+      ...typed('YOUR_API_KEY'),
+      ENTER,
+      RIGHT,
+      ENTER,
+    ]);
+
+    await vi.waitFor(() => {
+      expect(rig.store.setConfigCalls.length).toBeGreaterThan(0);
+    });
+    const patch = rig.store.setConfigCalls.at(-1)! as KimiConfig;
+    expect(patch.providers['api-example']).toEqual({
+      type: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'YOUR_API_KEY',
+      authScheme: { kind: 'api-key' },
     });
   });
 });

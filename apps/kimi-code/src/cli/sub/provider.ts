@@ -115,13 +115,22 @@ interface AddManualOptions {
   readonly keyHint?: string;
   /** Display name for messages that mention the vendor. */
   readonly displayName?: string;
+  /** How the API key is presented on the wire. */
+  readonly authScheme?: { kind: string; header?: string };
 }
 
 /** The flags `edit` honours, in the order they are listed back to the user. */
-const EDIT_FLAG_NAMES = ['--type', '--base-url', '--api-key', '--api-key-env'] as const;
+const EDIT_FLAG_NAMES = [
+  '--type',
+  '--base-url',
+  '--api-key',
+  '--api-key-env',
+  '--auth-scheme',
+  '--auth-header',
+] as const;
 
 /** `auth` is `edit` narrowed to the credential pair. */
-const AUTH_FLAG_NAMES = ['--api-key', '--api-key-env'] as const;
+const AUTH_FLAG_NAMES = ['--api-key', '--api-key-env', '--auth-scheme', '--auth-header'] as const;
 
 export interface EditOptions {
   readonly type?: string;
@@ -137,6 +146,8 @@ export interface EditOptions {
    * the hint would send the user to an error instead of a fix.
    */
   readonly acceptedFlags?: readonly string[];
+  /** How the API key is presented on the wire. */
+  readonly authScheme?: { kind: string; header?: string };
 }
 
 /**
@@ -197,6 +208,11 @@ export async function handleProviderEdit(
     }
     patch['apiKeyEnv'] = envName;
     delete patch['apiKey'];
+  }
+
+  const authScheme = resolveAuthScheme(opts.authScheme);
+  if (authScheme !== undefined) {
+    patch['authScheme'] = authScheme;
   }
 
   if (Object.keys(patch).length === 0) {
@@ -444,6 +460,7 @@ export async function handleProviderAddManual(
   // Replace semantics: setConfig deep-merges and cannot delete a key, so a
   // re-add over a removed provider's aliases would resurrect stale models.
   const next = removeProviderFromConfig(existing, id);
+  const authScheme = resolveAuthScheme(opts.authScheme);
   next.providers = {
     ...next.providers,
     [id]: {
@@ -453,6 +470,7 @@ export async function handleProviderAddManual(
       ...(opts.protocolOverrides !== undefined
         ? { protocolOverrides: opts.protocolOverrides }
         : undefined),
+      ...(authScheme !== undefined ? { authScheme } : undefined),
     },
   };
   // A section mapped to `undefined` is written as a removal rather than
@@ -1082,6 +1100,10 @@ function buildProbeHeaders(
   if (scheme?.kind === 'none') return headers;
   if (scheme?.kind === 'custom-header' && scheme.header !== undefined) {
     headers[scheme.header] = secret;
+    return headers;
+  }
+  if (scheme?.kind === 'api-key') {
+    headers[scheme.header ?? 'x-api-key'] = secret;
     return headers;
   }
   const profile = PROVIDER_TEST_WIRE_PROFILE[provider.type];
@@ -1776,10 +1798,22 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
     .requiredOption('--base-url <url>', 'OpenAI-compatible base URL, e.g. https://host/v1.')
     .option('--api-key <key>', 'API key. Falls back to KIMI_REGISTRY_API_KEY; omit when using --api-key-env.')
     .option('--api-key-env <VAR>', 'Read the API key from this environment variable instead of storing it.')
+    .option(
+      '--auth-scheme <kind>',
+      `How the key is sent: ${MANUAL_AUTH_SCHEME_KINDS.join(', ')}. Default is the wire's native style.`,
+    )
+    .option('--auth-header <name>', 'Header name for custom-header / api-key auth schemes.')
     .action(
       async (
         providerId: string,
-        options: { type: string; baseUrl: string; apiKey?: string; apiKeyEnv?: string },
+        options: {
+          type: string;
+          baseUrl: string;
+          apiKey?: string;
+          apiKeyEnv?: string;
+          authScheme?: string;
+          authHeader?: string;
+        },
       ) => {
         const resolved = resolveDeps(deps);
         await runAction(resolved, () =>
@@ -1788,6 +1822,10 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
             baseUrl: options.baseUrl,
             apiKey: options.apiKey,
             apiKeyEnv: options.apiKeyEnv,
+            authScheme: {
+              kind: options.authScheme ?? '',
+              header: options.authHeader,
+            },
           }),
         );
       },
@@ -1819,6 +1857,11 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
     .option('--base-url <url>', 'New OpenAI-compatible base URL.')
     .option('--api-key <key>', 'New API key. Falls back to KIMI_REGISTRY_API_KEY.')
     .option('--api-key-env <VAR>', 'Read the key from this environment variable instead of storing it.')
+    .option(
+      '--auth-scheme <kind>',
+      `How the key is sent: ${MANUAL_AUTH_SCHEME_KINDS.join(', ')}.`,
+    )
+    .option('--auth-header <name>', 'Header name for custom-header / api-key auth schemes.')
     // No explicit default: commander's `--no-x` sets `x` to false only when the
     // flag is given, so the value must be left undefined or it would read
     // `false` on every invocation and silently skip the refresh.
@@ -1831,6 +1874,8 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
           baseUrl?: string;
           apiKey?: string;
           apiKeyEnv?: string;
+          authScheme?: string;
+          authHeader?: string;
           refresh?: boolean;
         },
       ) => {
@@ -1842,6 +1887,10 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
             apiKey: options.apiKey,
             apiKeyEnv: options.apiKeyEnv,
             refresh: options.refresh !== false,
+            authScheme: {
+              kind: options.authScheme ?? '',
+              header: options.authHeader,
+            },
           }),
         );
       },
@@ -1854,6 +1903,11 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
     )
     .option('--api-key <key>', 'New API key. Falls back to KIMI_REGISTRY_API_KEY.')
     .option('--api-key-env <VAR>', 'Read the key from this environment variable instead of storing it.')
+    .option(
+      '--auth-scheme <kind>',
+      `How the key is sent: ${MANUAL_AUTH_SCHEME_KINDS.join(', ')}.`,
+    )
+    .option('--auth-header <name>', 'Header name for custom-header / api-key auth schemes.')
     // Same reason as `edit`: `--no-refresh` only writes `refresh` when the
     // flag is present, so a default here would silently skip discovery.
     .option('--no-refresh', 'Store the key without re-reading the model list.')
@@ -1863,6 +1917,8 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
         options: {
           apiKey?: string;
           apiKeyEnv?: string;
+          authScheme?: string;
+          authHeader?: string;
           refresh?: boolean;
         },
       ) => {
@@ -1873,6 +1929,10 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
             apiKeyEnv: options.apiKeyEnv,
             refresh: options.refresh !== false,
             acceptedFlags: AUTH_FLAG_NAMES,
+            authScheme: {
+              kind: options.authScheme ?? '',
+              header: options.authHeader,
+            },
           }),
         );
       },
@@ -2019,6 +2079,27 @@ function resolveApiKey(flag: string | undefined, env: NodeJS.ProcessEnv): string
   const fromEnv = env['KIMI_REGISTRY_API_KEY'];
   if (typeof fromEnv === 'string' && fromEnv.length > 0) return fromEnv;
   return undefined;
+}
+
+const MANUAL_AUTH_SCHEME_KINDS = ['bearer', 'api-key', 'custom-header', 'none'] as const;
+
+function resolveAuthScheme(
+  opts: { kind?: string; header?: string } | undefined,
+): KimiConfig['providers'][string]['authScheme'] | undefined {
+  if (opts === undefined) return undefined;
+  const kind = opts.kind?.trim();
+  if (kind === undefined || kind.length === 0) return undefined;
+  if (!(MANUAL_AUTH_SCHEME_KINDS as readonly string[]).includes(kind)) {
+    return undefined;
+  }
+  const header = opts.header?.trim();
+  if (kind === 'custom-header' && (header === undefined || header.length === 0)) {
+    return undefined;
+  }
+  return {
+    kind: kind as 'bearer' | 'api-key' | 'custom-header' | 'none',
+    header: header === undefined ? undefined : header,
+  };
 }
 
 function providerSourceLabel(provider: KimiConfig['providers'][string]): string {

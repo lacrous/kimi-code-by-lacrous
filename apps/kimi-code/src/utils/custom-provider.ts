@@ -177,12 +177,21 @@ export function deriveProviderId(baseUrl: string, taken: readonly string[]): str
 export function buildCustomProviderRecord(
   baseUrl: string,
   apiKey: string | undefined,
+  authScheme?: { readonly kind: 'bearer' | 'api-key' | 'custom-header' | 'none'; readonly header?: string },
 ): ProviderConfig {
+  // A keyless endpoint must not send a credential at all. Left unset, the
+  // OpenAI-compatible client substitutes the literal `unused` as the key and
+  // sends `Authorization: Bearer unused`; the `none` scheme suppresses that
+  // header instead. Callers that pass an explicit scheme (the TUI dialog)
+  // always describe the intent, so the default only covers the CLI path.
+  if (authScheme === undefined) {
+    authScheme = apiKey === undefined ? { kind: 'none' } : undefined;
+  }
   return {
     type: CUSTOM_PROVIDER_WIRE,
     baseUrl,
     apiKey,
-    authScheme: apiKey === undefined ? { kind: 'none' } : undefined,
+    authScheme,
   };
 }
 

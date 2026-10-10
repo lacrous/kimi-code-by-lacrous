@@ -1,14 +1,15 @@
 /**
- * CustomProviderDialog — blue rounded box that collects a base URL and an
- * optional API key for a provider the user points at by hand.
+ * CustomProviderDialog — blue rounded box that collects a base URL, an
+ * optional API key, and an authentication scheme for a provider the user
+ * points at by hand.
  *
  * Geometry mirrors `CustomRegistryImportDialogComponent` so the chrome stays
- * consistent with the registry-import and API-key login flows. Two fields,
+ * consistent with the registry-import and API-key login flows. Three fields,
  * switched with Tab / Shift-Tab / Up / Down; Enter advances to the next field
  * (and submits on the last one), Esc cancels. The base URL is validated as it
  * is typed, so a typo is corrected in place instead of surfacing as an error
  * after the dialog has closed. Only the URL is required — a local server needs
- * no key.
+ * no credential, and the scheme defaults to `none` when the key is empty.
  */
 
 import {
@@ -27,6 +28,7 @@ import { parseProviderBaseUrl } from '#/utils/custom-provider';
 export interface CustomProviderValue {
   readonly baseUrl: string;
   readonly apiKey?: string;
+  readonly authScheme?: { readonly kind: 'bearer' | 'api-key' | 'custom-header' | 'none'; readonly header?: string };
 }
 
 export type CustomProviderResult =
@@ -36,14 +38,43 @@ export type CustomProviderResult =
 const TITLE = 'Add a custom provider';
 const SUBTITLE_DEFAULT =
   'Any OpenAI-compatible endpoint. Models are read from its /models route.';
-const SUBTITLE_NO_KEY = 'The key is optional — a local server needs no credential.';
 const FOOTER_NOT_LAST = 'Tab / ↑↓ to switch  ·  Enter for next field  ·  Esc to cancel';
 const FOOTER_LAST = 'Tab / ↑↓ to switch  ·  Enter to submit  ·  Esc to cancel';
 
 const URL_LABEL = 'Base URL';
 const KEY_LABEL = 'API key (optional)';
+const AUTH_LABEL = 'Authentication';
 
-type FieldId = 'url' | 'key';
+type FieldId = 'url' | 'key' | 'auth';
+
+type AuthKind = 'bearer' | 'api-key' | 'custom-header' | 'none';
+
+const AUTH_OPTIONS: readonly {
+  readonly kind: AuthKind;
+  readonly label: string;
+  readonly description: string;
+}[] = [
+  {
+    kind: 'bearer',
+    label: 'Bearer token',
+    description: 'Sends Authorization: Bearer <key>.',
+  },
+  {
+    kind: 'api-key',
+    label: 'API key',
+    description: 'Sends the key in the x-api-key header.',
+  },
+  {
+    kind: 'custom-header',
+    label: 'Custom header',
+    description: 'Sends the key in a header you name.',
+  },
+  {
+    kind: 'none',
+    label: 'None',
+    description: 'Sends no credential.',
+  },
+];
 
 export class CustomProviderDialogComponent extends Container implements Focusable {
   focused = false;
@@ -54,17 +85,20 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
   private activeField: FieldId = 'url';
   private done = false;
   private urlHint: string | undefined;
+  private authIndex = 0;
+  private authHeader = '';
 
   constructor(onDone: (result: CustomProviderResult) => void, defaultBaseUrl: string = '') {
     super();
     this.onDone = onDone;
     if (defaultBaseUrl.length > 0) this.urlInput.setValue(defaultBaseUrl);
     this.urlInput.onSubmit = () => {
-      this.focusField('key');
+      this.focusNextField(1);
     };
     this.keyInput.onSubmit = () => {
-      this.handleSubmit();
+      this.focusNextField(1);
     };
+    // The auth row is not an Input; Enter on it submits the dialog.
   }
 
   handleInput(data: string): void {
@@ -83,11 +117,19 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
       return;
     }
     if (matchesKey(data, Key.down)) {
-      this.focusField('key');
+      this.focusNextField(1);
       return;
     }
     if (matchesKey(data, Key.up)) {
-      this.focusField('url');
+      this.focusNextField(-1);
+      return;
+    }
+    if (this.activeField === 'auth' && (matchesKey(data, Key.left) || matchesKey(data, Key.right))) {
+      this.cycleAuth(matchesKey(data, Key.right) ? 1 : -1);
+      return;
+    }
+    if (this.activeField === 'auth' && matchesKey(data, Key.enter)) {
+      this.handleSubmit();
       return;
     }
 
@@ -95,7 +137,7 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
 
     if (this.activeField === 'url') {
       this.urlInput.handleInput(data);
-    } else {
+    } else if (this.activeField === 'key') {
       this.keyInput.handleInput(data);
     }
   }
@@ -127,15 +169,18 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
 
     const urlLabelStyled = this.labelFor(URL_LABEL, this.activeField === 'url');
     const keyLabelStyled = this.labelFor(KEY_LABEL, this.activeField === 'key');
+    const authLabelStyled = this.labelFor(AUTH_LABEL, this.activeField === 'auth');
 
     const titleLine = truncateToWidth(titleStyled, innerWidth, '…');
     const subtitleLine = truncateToWidth(subtitleStyled, innerWidth, '…');
     const footerLine = truncateToWidth(footerStyled, innerWidth, '…');
     const urlLabelLine = truncateToWidth(urlLabelStyled, innerWidth, '…');
     const keyLabelLine = truncateToWidth(keyLabelStyled, innerWidth, '…');
+    const authLabelLine = truncateToWidth(authLabelStyled, innerWidth, '…');
     const urlInputLine = this.urlInput.render(innerWidth)[0] ?? '> ';
     const rawKeyInputLine = this.keyInput.render(innerWidth)[0] ?? '> ';
     const keyInputLine = maskInputLine(rawKeyInputLine);
+    const authInputLine = this.renderAuthLine(innerWidth);
 
     const contentLines: string[] = [
       titleLine,
@@ -147,6 +192,9 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
       '',
       keyLabelLine,
       keyInputLine,
+      '',
+      authLabelLine,
+      authInputLine,
       '',
       footerLine,
     ];
@@ -176,9 +224,7 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
 
   private subtitle(): string {
     if (this.urlHint !== undefined) return `Base URL ${this.urlHint}`;
-    return this.keyInput.getValue().trim().length === 0
-      ? `${SUBTITLE_DEFAULT} ${SUBTITLE_NO_KEY}`
-      : SUBTITLE_DEFAULT;
+    return SUBTITLE_DEFAULT;
   }
 
   private labelFor(label: string, active: boolean): string {
@@ -186,12 +232,37 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
   }
 
   private toggleField(): void {
-    this.focusField(this.activeField === 'url' ? 'key' : 'url');
+    this.focusNextField(this.activeField === 'url' ? 1 : -1);
   }
 
-  private focusField(field: FieldId): void {
+  private focusNextField(direction: 1 | -1): void {
+    const order: FieldId[] = ['url', 'key', 'auth'];
+    const idx = order.indexOf(this.activeField);
+    if (idx === -1) return;
+    const next = idx + direction;
+    if (next < 0 || next >= order.length) return;
     this.urlHint = undefined;
-    this.activeField = field;
+    this.activeField = order[next]!;
+  }
+
+  private cycleAuth(direction: 1 | -1): void {
+    const next = this.authIndex + direction;
+    if (next < 0 || next >= AUTH_OPTIONS.length) return;
+    this.authIndex = next;
+  }
+
+  private renderAuthLine(width: number): string {
+    const active = this.activeField === 'auth';
+    const prefix = active ? '> ' : '  ';
+    const item = AUTH_OPTIONS[this.authIndex];
+    if (!item) return prefix;
+    const label = `${item.label} — ${item.description}`;
+    const line = prefix + label;
+    return truncateToWidth(
+      active ? currentTheme.boldFg('accent', line) : currentTheme.fg('textDim', line),
+      width,
+      '…',
+    );
   }
 
   private handleSubmit(): void {
@@ -205,10 +276,22 @@ export class CustomProviderDialogComponent extends Container implements Focusabl
     }
 
     const key = this.keyInput.getValue().trim();
+    const chosen = AUTH_OPTIONS[this.authIndex];
+    if (!chosen) return;
+    const scheme =
+      chosen.kind === 'none' || key.length === 0
+        ? { kind: 'none' as const }
+        : chosen.kind === 'custom-header'
+          ? { kind: 'custom-header' as const, header: this.authHeader.trim() || 'x-api-key' }
+          : { kind: chosen.kind };
     this.done = true;
     this.onDone({
       kind: 'ok',
-      value: { baseUrl: check.baseUrl, apiKey: key.length > 0 ? key : undefined },
+      value: {
+        baseUrl: check.baseUrl,
+        apiKey: key.length > 0 ? key : undefined,
+        authScheme: scheme,
+      },
     });
   }
 

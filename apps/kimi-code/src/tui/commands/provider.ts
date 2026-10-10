@@ -120,10 +120,69 @@ function handleProviderSelectSource(
     .map(([alias]) => alias);
 
   if (aliases.length === 0) {
-    host.showError(
-      `${label} has no models yet. Re-add it to fetch its model list, or declare one under [models."${providerIds[0] ?? label}/…"] in config.toml.`,
-    );
-    reopenProviderManager(host);
+    // A saved provider whose discovery produced no models is not selectable,
+    // but it is usually just stale — refresh in place instead of forcing the
+    // user to re-add it and re-enter the API key.
+    const firstId = providerIds[0] ?? label;
+    const spinner = host.showLoginProgressSpinner(`Refreshing models for ${label}`);
+    void (async () => {
+      try {
+        const refreshed = await refreshAllProviderModels(buildDiscoveryHost(host), {
+          providerId: firstId,
+        });
+        const failure = refreshed.failed.find((f) => f.provider === firstId);
+        if (failure !== undefined) {
+          spinner.stop({ ok: false, label: 'Model refresh failed.' });
+          host.showError(
+            `${label} has no models yet, and refreshing failed: ${failure.reason}. Re-add it to fetch its model list, or declare one under [models."${firstId}/…"] in config.toml.`,
+          );
+          reopenProviderManager(host);
+          return;
+        }
+        const refreshedAliases = Object.entries(host.state.appState.availableModels)
+          .filter(([, model]) => ids.has(model.provider))
+          .map(([alias]) => alias);
+        if (refreshedAliases.length === 0) {
+          spinner.stop({ ok: false, label: 'No models found.' });
+          host.showError(
+            `${label} has no models yet. Re-add it to fetch its model list, or declare one under [models."${firstId}/…"] in config.toml.`,
+          );
+          reopenProviderManager(host);
+          return;
+        }
+        spinner.stop({ ok: true, label: 'Models refreshed.' });
+        const initialTabId = refreshedAliases.some(
+          (alias) => host.state.appState.availableModels[alias]?.provider === firstId,
+        )
+          ? firstId
+          : undefined;
+        const models = { ...host.state.appState.availableModels };
+        delete models[SECONDARY_DERIVED_MODEL_ALIAS];
+        const selector = new TabbedModelSelectorComponent({
+          models,
+          currentValue: host.state.appState.model,
+          selectedValue: refreshedAliases[0],
+          currentThinkingEffort: host.state.appState.thinkingEffort,
+          initialTabId,
+          onSelect: ({ alias, thinking }) => {
+            host.restoreEditor();
+            void setDefaultModel(host, alias, thinking).catch((error: unknown) => {
+              host.showError(`Set default model failed: ${formatErrorMessage(error)}`);
+            });
+          },
+          onCancel: () => {
+            host.restoreEditor();
+          },
+        });
+        host.mountEditorReplacement(selector);
+      } catch (error) {
+        spinner.stop({ ok: false, label: 'Model refresh failed.' });
+        host.showError(
+          `Refreshing models for ${label} failed: ${formatErrorMessage(error)}. Re-add it to fetch its model list, or declare one under [models."${firstId}/…"] in config.toml.`,
+        );
+        reopenProviderManager(host);
+      }
+    })();
     return;
   }
 
@@ -347,7 +406,11 @@ async function handleCustomEndpointAdd(host: SlashCommandHost): Promise<void> {
   ]);
 
   await addProviderAndSelectModel(host, { providerId, name: providerId, baseUrl: check.baseUrl }, () =>
-    saveProviderRecord(host, providerId, buildCustomProviderRecord(check.baseUrl, value.apiKey)),
+    saveProviderRecord(
+      host,
+      providerId,
+      buildCustomProviderRecord(check.baseUrl, value.apiKey, value.authScheme),
+    ),
   );
 }
 

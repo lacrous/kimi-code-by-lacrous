@@ -53,6 +53,14 @@ registerAuthStrategy({
 });
 
 registerAuthStrategy({
+  id: 'api-key',
+  apply: ({ scheme, apiKey }) => {
+    if (apiKey === undefined) return undefined;
+    return { [scheme.header ?? 'x-api-key']: apiKey };
+  },
+});
+
+registerAuthStrategy({
   id: 'custom-header',
   apply: ({ scheme, apiKey }) => {
     const header = scheme.header;
