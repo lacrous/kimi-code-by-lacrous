@@ -28,6 +28,7 @@ import {
   deriveProviderId,
   parseProviderBaseUrl,
 } from '#/utils/custom-provider';
+import { makeConfigStoreHarness } from '../../helpers/config-store';
 
 // Model discovery is the only outbound call the add flow makes; stubbed so the
 // test asserts what /provider writes, not what an endpoint happens to answer.
@@ -212,16 +213,17 @@ function makeProviderHost() {
     } as Record<string, Record<string, unknown>>,
   };
   const mounted: (Component & Focusable)[] = [];
-  // The add flow reads config before it writes, so getConfig/removeProvider have
-  // to mutate one shared record the way the real harness does.
-  const config: KimiConfig = {
+  // The add flow reads config before it writes, so the harness must own one
+  // record and every read sees what the last write left — including the
+  // replace-semantics write, which is the only one that can delete a field.
+  const store = makeConfigStoreHarness({
     providers: {
       empty: { type: 'openai' },
       acme: { type: 'openai' },
       other: { type: 'openai' },
     },
     defaultModel: 'other/thing',
-  };
+  });
   const spinnerStop = vi.fn();
   const host = {
     state: { appState },
@@ -230,17 +232,7 @@ function makeProviderHost() {
       mounted.push(panel);
     }),
     restoreEditor: vi.fn(),
-    harness: {
-      getConfig: vi.fn(async (): Promise<KimiConfig> => config),
-      removeProvider: vi.fn(async (providerId: string): Promise<KimiConfig> => {
-        delete config.providers[providerId];
-        return config;
-      }),
-      setConfig: vi.fn(async (patch: Partial<KimiConfig>): Promise<KimiConfig> => {
-        Object.assign(config, patch);
-        return config;
-      }),
-    },
+    harness: store.harness,
     authFlow: {
       refreshConfigAfterLogin: vi.fn(async () => false),
       activateModelAfterLogin: vi.fn(async () => false),
@@ -254,12 +246,23 @@ function makeProviderHost() {
       getConfig: ReturnType<typeof vi.fn>;
       removeProvider: ReturnType<typeof vi.fn>;
       setConfig: ReturnType<typeof vi.fn>;
+      replaceConfigSections: ReturnType<typeof vi.fn>;
     };
     restoreEditor: ReturnType<typeof vi.fn>;
     showError: ReturnType<typeof vi.fn>;
     showLoginProgressSpinner: ReturnType<typeof vi.fn>;
   };
-  return { host, mounted, appState, config, spinnerStop };
+  return {
+    host,
+    mounted,
+    appState,
+    /** Live view of the store the harness writes to, so seeds land where reads see them. */
+    get config(): KimiConfig {
+      return store.current();
+    },
+    store,
+    spinnerStop,
+  };
 }
 
 function press(panel: Component & Focusable, keys: readonly string[]): void {
@@ -280,7 +283,8 @@ describe('handleProviderCommand', () => {
   });
 
   it('persists the model chosen for the selected platform', async () => {
-    const { host, mounted } = makeProviderHost();
+    const rig = makeProviderHost();
+    const { host, mounted } = rig;
     await handleProviderCommand(host);
     press(mounted[0]!, [UP, ENTER]);
 
@@ -290,7 +294,7 @@ describe('handleProviderCommand', () => {
     press(picker, ['s', 'o', 'n', 'n', 'e', 't', ENTER]);
 
     await vi.waitFor(() => {
-      expect(host.harness.setConfig).toHaveBeenCalledWith(
+      expect(rig.store.setConfigCalls.at(-1)).toEqual(
         expect.objectContaining({ defaultModel: 'acme/sonnet' }),
       );
     });
@@ -355,13 +359,13 @@ async function addCustomEndpoint(
   baseUrl: string,
   apiKey: string | undefined,
 ): Promise<void> {
-  const { host, mounted } = rig;
+  const { mounted } = rig;
   await openCustomEndpointDialog(rig);
 
   // Enter on the URL field advances to the key field, Enter on it submits.
   press(mounted[2]!, [...typed(baseUrl), ENTER, ...typed(apiKey ?? ''), ENTER]);
   await vi.waitFor(() => {
-    expect(host.harness.setConfig).toHaveBeenCalled();
+    expect(rig.store.setConfigCalls.length).toBeGreaterThan(0);
   });
 }
 
@@ -381,7 +385,7 @@ describe('custom endpoint provider', () => {
 
     await addCustomEndpoint(rig, 'https://api.example.com/v1', 'YOUR_API_KEY');
 
-    const patch = rig.host.harness.setConfig.mock.calls.at(-1)![0] as KimiConfig;
+    const patch = rig.store.setConfigCalls.at(-1)! as KimiConfig;
     // The id comes from the hostname, never from the user, and the wire is
     // OpenAI-compatible so the key needs no protocol picker.
     expect(patch.providers['api-example']).toEqual({
@@ -406,7 +410,7 @@ describe('custom endpoint provider', () => {
 
     await addCustomEndpoint(rig, 'http://localhost:11434/v1', undefined);
 
-    const patch = rig.host.harness.setConfig.mock.calls.at(-1)![0] as KimiConfig;
+    const patch = rig.store.setConfigCalls.at(-1)! as KimiConfig;
     // Without `none`, the OpenAI-compatible client substitutes the literal
     // `unused` as the key and sends `Authorization: Bearer unused`.
     expect(patch.providers['localhost-11434']).toEqual({
@@ -431,13 +435,17 @@ describe('custom endpoint provider', () => {
 
     // Invalid URL: the dialog reports it in place instead of writing anything.
     expect(rig.mounted[2]!.render(80).join('\n')).toContain('Base URL must be http(s)');
-    expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+    expect(rig.store.setConfigCalls).toHaveLength(0);
   });
 });
 
 describe('provider key edit', () => {
   it('replaces the key of the highlighted provider and refreshes its models', async () => {
     const rig = makeProviderHost();
+    // Seeded with a second credential so the delete is exercised: `apiKeyEnv`
+    // is what the key prompt has to clear, and it is invisible in the input
+    // field that collects the replacement.
+    rig.config.providers['acme'] = { type: 'openai', apiKeyEnv: 'ACME_KEY' };
     await handleProviderCommand(rig.host);
 
     // Rows are [empty, acme, other(current), add]; one hop up lands on `acme`.
@@ -449,12 +457,17 @@ describe('provider key edit', () => {
     press(rig.mounted[1]!, [...typed('NEW_API_KEY'), ENTER]);
 
     await vi.waitFor(() => {
-      expect(rig.host.harness.setConfig).toHaveBeenCalled();
+      expect(rig.config.providers['acme']).toEqual({ type: 'openai', apiKey: 'NEW_API_KEY' });
     });
-    // The stale key is replaced, not merged beside: `apiKeyEnv` would win over
-    // `apiKey` and the edit would look like it silently did nothing.
-    expect(rig.config.providers['acme']).toEqual({ type: 'openai', apiKey: 'NEW_API_KEY' });
-    expect(rig.host.harness.setConfig.mock.calls.at(-1)![0]).toEqual(
+    // `apiKeyEnv` is gone rather than sitting beside the new key. A deep-merge
+    // write keeps it, and the record the runtime then reads carries two
+    // credential fields — rejected as a conflict, while the TUI has already
+    // reported the key as updated.
+    expect(rig.config.providers['acme']).not.toHaveProperty('apiKeyEnv');
+    // Written through the replace path, which is the only one that can express
+    // the deletion in the first place.
+    expect(rig.store.setConfigCalls).toHaveLength(0);
+    expect(rig.store.replaceCalls.at(-1)).toEqual(
       expect.objectContaining({
         providers: expect.objectContaining({
           acme: { type: 'openai', apiKey: 'NEW_API_KEY' },
@@ -487,7 +500,7 @@ describe('provider key edit', () => {
     });
     // Its credential comes from the token store, so a hand-typed key would be
     // overwritten on the next token refresh — nothing is written.
-    expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+    expect(rig.store.setConfigCalls).toHaveLength(0);
     expect(rig.mounted).toHaveLength(2);
     expect(rig.mounted[1]).toBeInstanceOf(ProviderManagerComponent);
   });
@@ -526,7 +539,7 @@ describe('provider key edit', () => {
     press(rig.mounted[0]!, [DOWN, 'e']);
 
     expect(rig.mounted).toHaveLength(1);
-    expect(rig.host.harness.setConfig).not.toHaveBeenCalled();
+    expect(rig.store.setConfigCalls).toHaveLength(0);
     expect(rig.host.showError).not.toHaveBeenCalled();
   });
 });
@@ -565,6 +578,53 @@ describe('custom provider helpers', () => {
       ok: true,
       baseUrl: 'https://api.example.com/v1',
     });
+  });
+
+  // The key travels in a request header, so a plaintext endpoint puts it on the
+  // wire in the clear and the user is never told. Local hosts stay accepted
+  // because that is where self-hosted and LAN gateways actually live — the
+  // point of the custom-provider path in the first place.
+  it('accepts plaintext http only for a host the key cannot leave', () => {
+    const remote = parseProviderBaseUrl('http://api.example.com/v1', {});
+    expect(remote.ok).toBe(false);
+    expect(remote.ok === false && remote.reason).toContain(
+      'Set KIMI_CODE_ALLOW_INSECURE_PROVIDER_HTTP=1',
+    );
+
+    for (const baseUrl of [
+      'http://localhost:11434/v1',
+      'http://127.0.0.1:8080/v1',
+      'http://[::1]:1234/v1',
+      'http://192.168.1.5:1234/v1',
+      'http://10.0.0.7/v1',
+      'http://172.16.9.9/v1',
+      'http://gateway.local/v1',
+      'http://box.localhost/v1',
+      'http://[fd00::1]:8080/v1',
+      'http://[fc00::1]:8080/v1',
+      'http://[fe80::1]/v1',
+      'http://[::ffff:10.0.0.1]/v1',
+    ]) {
+      expect(parseProviderBaseUrl(baseUrl, {})).toEqual({ ok: true, baseUrl });
+    }
+
+    // 172.32.x is outside RFC1918's 172.16/12 block, so it is a public address
+    // wearing a private-looking prefix.
+    expect(parseProviderBaseUrl('http://172.32.0.1/v1', {}).ok).toBe(false);
+    // Google's public DNS resolver: routable, so the key would leave the link.
+    expect(parseProviderBaseUrl('http://[2001:4860:4860::8888]/v1', {}).ok).toBe(false);
+  });
+
+  it('restores plaintext http for a remote host when the escape hatch is set', () => {
+    expect(
+      parseProviderBaseUrl('http://api.example.com/v1', {
+        KIMI_CODE_ALLOW_INSECURE_PROVIDER_HTTP: '1',
+      }),
+    ).toEqual({ ok: true, baseUrl: 'http://api.example.com/v1' });
+    // Only the exact value opts in; a stray "true" must not.
+    expect(parseProviderBaseUrl('http://api.example.com/v1', {
+      KIMI_CODE_ALLOW_INSECURE_PROVIDER_HTTP: 'true',
+    }).ok).toBe(false);
   });
 
   it('sends no credential header only when no key was entered', () => {

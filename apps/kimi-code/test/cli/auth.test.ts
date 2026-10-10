@@ -27,6 +27,8 @@ import {
   type AuthDeps,
 } from '#/cli/sub/auth';
 
+import { makeConfigStoreHarness, type ConfigStoreHarness } from '../helpers/config-store';
+
 const SECRET = 'sk-test-not-a-real-key-0000';
 
 class ExitCalled extends Error {
@@ -44,10 +46,7 @@ interface FakeAuth {
   calls: string[];
 }
 
-interface FakeHarness {
-  ensureConfigFile: () => Promise<void>;
-  getConfig: () => Promise<KimiConfig>;
-  setConfig: (patch: Partial<KimiConfig>) => Promise<KimiConfig>;
+interface FakeHarness extends ConfigStoreHarness {
   auth: FakeAuth;
 }
 
@@ -55,7 +54,7 @@ function makeHarness(
   initial: KimiConfig,
   inspections: Record<string, OAuthTokenInspection> = {},
 ): { harness: FakeHarness; current: () => KimiConfig; auth: FakeAuth } {
-  let persisted: KimiConfig = structuredClone(initial);
+  const store = makeConfigStoreHarness(initial);
   const calls: string[] = [];
   const auth: FakeAuth = {
     inspectToken: async (providerName) => {
@@ -80,21 +79,8 @@ function makeHarness(
     },
     calls,
   };
-  const harness: FakeHarness = {
-    ensureConfigFile: async () => {},
-    getConfig: async () => structuredClone(persisted),
-    setConfig: async (patch) => {
-      const next: Record<string, unknown> = { ...persisted };
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === undefined) continue;
-        next[key] = value;
-      }
-      persisted = next as KimiConfig;
-      return structuredClone(persisted);
-    },
-    auth,
-  };
-  return { harness, current: () => structuredClone(persisted), auth };
+  const harness: FakeHarness = { ...store.harness, auth };
+  return { harness, current: store.current, auth };
 }
 
 function makeDeps(

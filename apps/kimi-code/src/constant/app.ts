@@ -70,6 +70,13 @@ export const KIMI_CODE_BANNER_STATE_FILE_NAME = 'state.json';
 export const KIMI_CODE_SURVEY_STATE_FILE_NAME = 'feedback-survey-state.json';
 export const KIMI_CODE_RECOMMENDED_EFFORT_STATE_FILE_NAME = 'recommended-effort-state.json';
 
+// Set to `1` to accept a plaintext `http://` provider base URL on a host that
+// is neither the local machine nor a private network. The alternative —
+// refusing every unrecognised host — strands a self-hosted gateway reachable
+// only by a resolvable name the user cannot classify.
+export const KIMI_CODE_ALLOW_INSECURE_PROVIDER_HTTP_ENV =
+  'KIMI_CODE_ALLOW_INSECURE_PROVIDER_HTTP';
+
 // Managed Kimi auth provider key shared with OAuth/SDK config.
 export const DEFAULT_OAUTH_PROVIDER_NAME = 'managed:kimi-code';
 

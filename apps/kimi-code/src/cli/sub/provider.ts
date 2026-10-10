@@ -47,6 +47,7 @@ import {
   type BuiltInProviderPin,
 } from '#/utils/built-in-providers';
 import { parseProviderBaseUrl } from '#/utils/custom-provider';
+import { redactProviderSecrets, writeProviderRecords } from '#/utils/provider-records';
 import {
   refreshAllProviderModels,
   type RefreshProviderHost,
@@ -169,7 +170,7 @@ export async function handleProviderEdit(
     patch['type'] = wire;
   }
   if (opts.baseUrl !== undefined) {
-    const check = parseProviderBaseUrl(opts.baseUrl);
+    const check = parseProviderBaseUrl(opts.baseUrl, deps.env);
     if (!check.ok) {
       deps.stderr.write(`--base-url ${check.reason}\n`);
       deps.exit(1);
@@ -213,7 +214,7 @@ export async function handleProviderEdit(
   if (inline !== undefined) delete merged['apiKeyEnv'];
   if (envName !== undefined) delete merged['apiKey'];
   config.providers[id] = merged as KimiConfig['providers'][string];
-  await harness.setConfig({ providers: config.providers });
+  await writeProviderRecords(harness, config.providers);
   deps.stdout.write(`Updated "${id}": ${Object.keys(patch).join(', ')}.\n`);
 
   if (opts.refresh === false) {
@@ -412,7 +413,7 @@ export async function handleProviderAddManual(
     deps.stderr.write('--base-url is required for a manual provider.\n');
     deps.exit(1);
   }
-  const baseUrlCheck = parseProviderBaseUrl(baseUrl);
+  const baseUrlCheck = parseProviderBaseUrl(baseUrl, deps.env);
   if (!baseUrlCheck.ok) {
     deps.stderr.write(`--base-url ${baseUrlCheck.reason}\n`);
     deps.exit(1);
@@ -454,7 +455,10 @@ export async function handleProviderAddManual(
         : undefined),
     },
   };
-  await harness.setConfig({
+  // A section mapped to `undefined` is written as a removal rather than
+  // silently surviving the replace, so a dangling `defaultModel` cannot outlive
+  // the provider it pointed at.
+  await harness.replaceConfigSections({
     providers: next.providers,
     models: next.models,
     defaultModel: next.defaultModel,
@@ -532,8 +536,19 @@ export async function handleProviderList(
   const config = await harness.getConfig();
 
   if (opts.json) {
+    // The records are serialised exactly as stored, which would put an inline
+    // `api_key` into scrollback, a pipe, or a CI log. Masking is the only thing
+    // standing between `kimi provider list --json > out.json` and a leaked key,
+    // and stdout is not a place a secret is recoverable from once written.
     deps.stdout.write(
-      `${JSON.stringify({ providers: config.providers, models: config.models ?? {} }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          providers: redactProviderSecrets(config.providers),
+          models: config.models ?? {},
+        },
+        null,
+        2,
+      )}\n`,
     );
     return;
   }
@@ -722,18 +737,20 @@ export async function handleProviderTest(
   // Stages 3-5 all need somewhere to send a request. A record without a
   // `base_url` uses the vendor default resolved at request time, which the CLI
   // cannot probe honestly, so it is reported rather than guessed at.
-  const base =
+  const baseUrlCheck =
     baseUrl === undefined || baseUrl.length === 0
       ? undefined
-      : parseProviderBaseUrl(baseUrl).ok
-        ? normalizeDiscoveryBaseUrl(baseUrl)
-        : undefined;
+      : parseProviderBaseUrl(baseUrl, deps.env);
+  const base =
+    baseUrlCheck?.ok === true ? normalizeDiscoveryBaseUrl(baseUrlCheck.baseUrl) : undefined;
   const noBase: ProviderTestStageResult = {
     status: 'SKIP',
     detail:
-      baseUrl === undefined || baseUrl.length === 0
+      baseUrlCheck === undefined
         ? 'no base_url configured'
-        : `base_url "${baseUrl}" is not a usable http(s) URL`,
+        : baseUrlCheck.ok
+          ? `base_url "${baseUrl}" is not a usable http(s) URL`
+          : `base_url --base-url ${baseUrlCheck.reason}`,
   };
 
   if (base === undefined) {
@@ -1276,7 +1293,7 @@ async function fetchAdvertisedModels(
     deps.stderr.write('No base_url configured — set one with `kimi provider edit --base-url`.\n');
     deps.exit(1);
   }
-  const check = parseProviderBaseUrl(baseUrl);
+  const check = parseProviderBaseUrl(baseUrl, deps.env);
   if (!check.ok) {
     deps.stderr.write(`base_url ${check.reason}\n`);
     deps.exit(1);

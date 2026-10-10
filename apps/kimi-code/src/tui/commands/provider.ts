@@ -229,7 +229,10 @@ async function handleProviderEditKey(
     delete next['apiKeyEnv'];
     providers[id] = next as ProviderConfig;
   }
-  await host.harness.setConfig({
+  // Replace semantics: the sections below are rewritten as a whole, and a
+  // deep-merge write would keep the `apiKeyEnv` just deleted above, silently
+  // bricking the provider while the TUI reports the key as updated.
+  await host.harness.replaceConfigSections({
     providers,
     models: config.models,
     defaultModel: config.defaultModel,

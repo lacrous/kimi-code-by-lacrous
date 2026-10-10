@@ -16,6 +16,7 @@ import {
 } from '@moonshot-ai/agent-core-v2/app/kosongConfig/modelsDevUpstream';
 
 import { BUILT_IN_PROVIDERS } from '#/utils/built-in-providers';
+import { makeConfigStoreHarness, type ConfigStoreHarness } from '../helpers/config-store';
 
 import {
   handleCatalogAdd,
@@ -58,71 +59,9 @@ class ExitCalled extends Error {
   }
 }
 
-interface FakeHarness {
-  ensureConfigFile: () => Promise<void>;
-  getConfig: () => Promise<KimiConfig>;
-  setConfig: (patch: Partial<KimiConfig>) => Promise<KimiConfig>;
-  removeProvider: (providerId: string) => Promise<KimiConfig>;
-  close: () => Promise<void>;
-}
+type FakeHarness = ConfigStoreHarness;
 
-function makeHarness(initial: KimiConfig): {
-  harness: FakeHarness;
-  current: () => KimiConfig;
-  setConfigCalls: Array<Partial<KimiConfig>>;
-  removeCalls: string[];
-} {
-  // `persisted` simulates the on-disk config; the real RPC's `removeProvider`
-  // reads from / writes to disk on every call. Tests must
-  // model this: anything the handler builds up in its in-memory `config`
-  // object disappears unless it is flushed via `setConfig` BEFORE the next
-  // `removeProvider`.
-  let persisted: KimiConfig = structuredClone(initial);
-  const setConfigCalls: Array<Partial<KimiConfig>> = [];
-  const removeCalls: string[] = [];
-  const harness: FakeHarness = {
-    ensureConfigFile: async () => {},
-    getConfig: async () => structuredClone(persisted),
-    setConfig: async (patch) => {
-      setConfigCalls.push(structuredClone(patch));
-      // Mirror the real `setKimiConfig`: deep-merge with undefined keys
-      // skipped. This is
-      // load-bearing for tests that assert `setConfig({defaultModel:
-      // undefined})` does NOT wipe a key from disk — only `removeProvider`
-      // can.
-      const next: Record<string, unknown> = { ...persisted };
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === undefined) continue;
-        next[key] = value;
-      }
-      persisted = next as KimiConfig;
-      return structuredClone(persisted);
-    },
-    removeProvider: async (providerId) => {
-      removeCalls.push(providerId);
-      const nextProviders = { ...persisted.providers };
-      delete nextProviders[providerId];
-      const nextModels = { ...persisted.models };
-      let removedDefault = false;
-      for (const [alias, model] of Object.entries(nextModels)) {
-        if (model.provider === providerId) {
-          delete nextModels[alias];
-          if (persisted.defaultModel === alias) removedDefault = true;
-        }
-      }
-      persisted = { ...persisted, providers: nextProviders, models: nextModels };
-      if (removedDefault) persisted = { ...persisted, defaultModel: undefined };
-      return structuredClone(persisted);
-    },
-    close: async () => {},
-  };
-  return {
-    harness,
-    current: () => persisted,
-    setConfigCalls,
-    removeCalls,
-  };
-}
+const makeHarness = makeConfigStoreHarness;
 
 function makeDeps(
   harness: FakeHarness,
@@ -1608,6 +1547,46 @@ describe('kimi provider list', () => {
       'manual',
     ]);
     expect(Object.keys(parsed.models)).toContain('kohub/a');
+  });
+
+  // `--json` is for scripting, so its destination is a pipe, a CI log, or a
+  // shell redirect that outlives the session. An inline key in that output is a
+  // leak with no user action left to revoke it.
+  it('masks every secret in the --json document, including nested ones', async () => {
+    const SECRET = 'sk-live-abcdefghijklmnop0123456789';
+    const { harness } = makeHarness({
+      providers: {
+        plain: { type: 'openai', baseUrl: 'https://x', apiKey: SECRET },
+        imported: {
+          type: 'openai',
+          baseUrl: 'https://y',
+          apiKeyEnv: 'ACME_KEY',
+          customHeaders: { 'X-Tenant-Key': SECRET, 'X-Org': 'acme' },
+          source: { kind: 'apiJson', url: 'https://z', apiKey: SECRET },
+        },
+      },
+    } as unknown as KimiConfig);
+    const { deps, stdout } = makeDeps(harness);
+
+    await tryRun(() => handleProviderList(deps, { json: true }));
+
+    const out = stdout.join('');
+    expect(out).not.toContain(SECRET);
+    expect(JSON.parse(out)).toEqual({
+      providers: {
+        plain: { type: 'openai', baseUrl: 'https://x', apiKey: 'sk-********6789' },
+        imported: {
+          type: 'openai',
+          baseUrl: 'https://y',
+          // An env var *name* is not a secret; blanking it would make the
+          // document useless for telling a configured provider from a broken one.
+          apiKeyEnv: 'ACME_KEY',
+          customHeaders: { 'X-Tenant-Key': 'sk-********6789', 'X-Org': '****' },
+          source: { kind: 'apiJson', url: 'https://z', apiKey: 'sk-********6789' },
+        },
+      },
+      models: {},
+    });
   });
 });
 

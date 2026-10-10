@@ -18,6 +18,7 @@ import type { OAuthTokenInspection } from '@moonshot-ai/kimi-code-oauth';
 import type { Command } from 'commander';
 
 import { createKimiCodeHostIdentity } from '#/cli/version';
+import { writeProviderRecords } from '#/utils/provider-records';
 import { readSecretFromTerminal } from '#/utils/process/secret-input';
 
 import { resolveTestCredential, type ProviderDeps, type TestCredential } from './provider';
@@ -214,11 +215,14 @@ export async function handleAuthLogin(deps: AuthDeps, providerId: string): Promi
   }
 
   // Mutually exclusive with the env reference, exactly as `provider edit` does
-  // it: a spread cannot delete, and the runtime rejects a record carrying both.
+  // it: the record is rebuilt without `apiKeyEnv` (a spread cannot delete), and
+  // written with replace semantics — a deep-merge write would leave the env
+  // reference standing next to the new key and the runtime would reject the
+  // record as a conflict.
   const next: Record<string, unknown> = { ...provider, apiKey: trimmed };
   delete next['apiKeyEnv'];
   config.providers[id] = next as KimiConfig['providers'][string];
-  await harness.setConfig({ providers: config.providers });
+  await writeProviderRecords(harness, config.providers);
   deps.stdout.write(`Stored a credential for "${id}". The value is not shown again.\n`);
 }
 
@@ -261,7 +265,10 @@ export async function handleAuthLogout(deps: AuthDeps, providerId: string): Prom
     return;
   }
   config.providers[id] = next as KimiConfig['providers'][string];
-  await harness.setConfig({ providers: config.providers });
+  // Clearing a credential is a removal, and `setConfig` deep-merges — the
+  // fields deleted above would survive it and the command would report success
+  // with the secret still sitting in config.toml.
+  await writeProviderRecords(harness, config.providers);
   deps.stdout.write(`Cleared ${cleared.join(', ')} for "${id}". The provider itself is still configured.\n`);
 }
 
