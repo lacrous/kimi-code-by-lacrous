@@ -25,6 +25,7 @@ import {
   type KimiRegion,
   type ManagedKimiConfigShape,
   type OAuthRefreshOutcome,
+  type OAuthTokenInspection,
 } from '@moonshot-ai/kimi-code-oauth';
 
 import { mapOAuthTokenError } from '#/oauth-error';
@@ -95,6 +96,16 @@ export interface KimiAuthLoginResult {
 export interface KimiAuthLogoutResult {
   readonly providerName: string;
   readonly ok: true;
+}
+
+/**
+ * Post-refresh state, so a caller that forced a rotation can report when the
+ * new token expires instead of only that the call returned.
+ */
+export interface KimiAuthRefreshResult {
+  readonly providerName: string;
+  readonly ok: true;
+  readonly token: OAuthTokenInspection;
 }
 
 export interface KimiAuthFacadeOptions {
@@ -266,6 +277,48 @@ export class KimiAuthFacade {
   ): Promise<string | undefined> {
     return this.toolkit.getCachedAccessToken(
       providerName,
+      this.runtimeOAuthRef(providerName, oauthRef),
+    );
+  }
+
+  /**
+   * Forces an OAuth token rotation and reports the resulting state.
+   *
+   * `getCachedAccessToken` is the right call on a request path — the runtime
+   * refreshes on its own schedule and the caller never notices. This is for
+   * surfaces that need the rotation to happen *now* and visibly: an explicit
+   * `refresh`, or an operator who has just changed something at the identity
+   * provider and wants the local copy re-read before the next session.
+   */
+  async refresh(
+    providerName?: string | undefined,
+    oauthRef?: OAuthRef | undefined,
+  ): Promise<KimiAuthRefreshResult> {
+    const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
+    // Falls back to the provider's own configured ref, then applies the managed
+    // runtime overrides for the Kimi Code provider. Reading the managed ref
+    // unconditionally would refresh a custom provider against Kimi Code's
+    // identity provider instead of the one it was configured with.
+    const ref = this.runtimeOAuthRef(name, oauthRef ?? this.resolveManagedAuth(name).oauthRef);
+    await this.toolkit.ensureFresh(name, { force: true, oauthRef: ref });
+    return {
+      providerName: name,
+      ok: true,
+      token: await this.toolkit.inspectCachedToken(name, ref),
+    };
+  }
+
+  /**
+   * Offline credential state: whether a token exists, whether it was revoked,
+   * and when it expires. Makes no network call, so it is safe for a status
+   * listing that may enumerate every provider.
+   */
+  async inspectToken(
+    providerName?: string | undefined,
+    oauthRef?: OAuthRef | undefined,
+  ): Promise<OAuthTokenInspection> {
+    return this.toolkit.inspectCachedToken(
+      providerName ?? KIMI_CODE_PROVIDER_NAME,
       this.runtimeOAuthRef(providerName, oauthRef),
     );
   }

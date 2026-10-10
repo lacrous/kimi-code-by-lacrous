@@ -20,6 +20,8 @@ export { SDKRpcClientBase } from '#/rpc';
 export { KimiForCodingProvider } from '#/kimi-code-model-provider';
 export type { KimiForCodingProviderOptions } from '#/kimi-code-model-provider';
 export { removeProviderFromConfig } from '#/v2/config-mapper';
+export { providerEndpointEnvNames } from '#/provider-endpoint';
+export type { ProviderEndpointEnvNames } from '#/provider-endpoint';
 
 export {
   applyCatalogProvider,
@@ -128,6 +130,7 @@ export type {
   KimiAuthFeedbackUploadPart,
   KimiAuthLoginResult,
   KimiAuthLogoutResult,
+  KimiAuthRefreshResult,
   KimiAuthSubmitFeedbackInput,
 } from '#/auth';
 

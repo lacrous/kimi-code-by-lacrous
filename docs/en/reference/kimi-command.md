@@ -133,7 +133,7 @@ In `stream-json` mode, regular replies produce an Assistant message; when the mo
 
 ## Subcommands
 
-`kimi` provides the following subcommands: `login` (non-interactive login), `acp` (ACP IDE mode), `web` (run the local REST/WebSocket/web service in the foreground and open the web UI), `doctor` (validate configuration files), `export` (export a session), `migrate` (migrate legacy data), `upgrade` (check for updates), and `provider` (manage providers).
+`kimi` provides the following subcommands: `login` (non-interactive login), `acp` (ACP IDE mode), `web` (run the local REST/WebSocket/web service in the foreground and open the web UI), `doctor` (validate configuration files), `export` (export a session), `migrate` (migrate legacy data), `upgrade` (check for updates), `provider` (manage providers), and `auth` (check and manage provider credentials).
 
 ### `kimi login`
 
@@ -501,6 +501,95 @@ Diagnose a configured provider without sending a real conversation. The probe ru
 ```sh
 kimi provider test cline
 kimi provider test my-gateway --model my-gateway/auto --timeout 30000
+```
+
+### `kimi auth`
+
+Check whether a provider is signed in, and manage the credential behind it. Where [`kimi provider auth`](#kimi-provider-auth-providerid) is the scripted path — it takes a key as an argument — this is the interactive one: it reports state for every provider at a glance, and reads a new key from the terminal with the input hidden so the value never reaches your shell history, the process table, or a screenshot of your scrollback.
+
+`list` and `status` never contact the provider. They read only what is already cached locally, so they answer "am I signed in?" instantly and cannot rotate a token as a side effect.
+
+Every command reports one of five states:
+
+| State | Meaning |
+| --- | --- |
+| `authenticated` | A usable credential is present |
+| `expired` | An OAuth token has lapsed; the runtime refreshes it on the next request |
+| `revoked` | The stored token was revoked and must be replaced |
+| `missing` | No credential is configured for this provider |
+| `none` | The provider sends no credential at all (`auth_scheme = "none"`) |
+
+`expired` and `revoked` are deliberately distinct from `missing`: in both cases a credential exists and signing in again is the fix, while `missing` may simply be a provider you never gave a key.
+
+#### `kimi auth list`
+
+Print one line per configured provider: its state, and a detail explaining how the credential resolves — for example which environment variable supplies it, or that the token is refreshable. Providers with no credential configured are listed too, so the table is a complete inventory rather than only the working ones.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `--json` | Emit the rows as JSON |
+
+```sh
+kimi auth list
+kimi auth list --json
+```
+
+#### `kimi auth status <providerId>`
+
+Report one provider in detail, including its expiry when the stored credential carries one. An unknown provider id exits `1` and lists the ids that are configured.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to inspect |
+| `--json` | Emit the row as JSON |
+
+```sh
+kimi auth status cline
+kimi auth status my-gateway --json
+```
+
+#### `kimi auth login <providerId>`
+
+Prompt for an API key with the input hidden and store it in `config.toml`. Press `Ctrl-C` or `Ctrl-D` to cancel; nothing is written. Storing a key here removes any `api_key_env` reference on the same provider, because the runtime rejects a provider carrying both.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to store a key for |
+
+This command handles providers that authenticate with a static API key. A provider configured for OAuth is refused with a pointer to [`kimi login`](#kimi-login), which drives the device-code flow; signing that provider in here would authenticate against one identity provider while writing another's configuration.
+
+```sh
+kimi auth login my-gateway
+```
+
+::: tip
+Because the key is read from the terminal rather than the command line, `kimi auth login` is the safer way to store a secret on a shared machine. [`kimi provider auth`](#kimi-provider-auth-providerid) puts the key in your shell history.
+:::
+
+#### `kimi auth logout <providerId>`
+
+Clear a provider's stored credential and leave the provider itself configured. For an OAuth provider the cached token is deleted as well.
+
+Signing out and deleting are different operations: this removes the credential but keeps the provider's model aliases, and never touches `default_model`. To remove the provider entirely, use [`kimi provider remove`](#kimi-provider-remove-providerid). A provider with nothing to clear reports so and exits `0`.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to sign out |
+
+```sh
+kimi auth logout my-gateway
+```
+
+#### `kimi auth refresh <providerId>`
+
+Force an OAuth token rotation now instead of waiting for the next request to find the token stale. Refreshable credentials rotate automatically during normal use; this is for checking that rotation works before you need it. A provider using a static API key exits `1` with an explanation, because such a key does not expire.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider to refresh |
+
+```sh
+kimi auth refresh cline
 ```
 
 ## Next steps

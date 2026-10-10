@@ -22,7 +22,7 @@ import { pollDeviceToken, refreshAccessToken, requestDeviceAuthorization } from 
 import type { DevicePollResult, RefreshOptions } from './oauth';
 import type { TokenStorage } from './storage';
 import { classifyToken, revokedTombstone, type TokenState } from './token-state';
-import type { DeviceAuthorization, OAuthFlowConfig, OAuthRequestHeaders, TokenInfo } from './types';
+import type { DeviceAuthorization, OAuthFlowConfig, OAuthRequestHeaders, OAuthTokenInspection, TokenInfo } from './types';
 
 const MIN_REFRESH_THRESHOLD_SECONDS = 300;
 const REFRESH_THRESHOLD_RATIO = 0.5;
@@ -241,6 +241,31 @@ export class OAuthManager {
   async getCachedAccessToken(): Promise<string | undefined> {
     const state = await this.loadState();
     return state.kind === 'valid' ? state.token.accessToken : undefined;
+  }
+
+  /**
+   * Offline status for UIs that need to explain *why* a provider is unusable —
+   * never configured, signed in once and revoked, or signed in with a token
+   * that expired an hour ago. Deliberately takes no network action and returns
+   * no secret: `hasToken`/`getCachedAccessToken` already cover "can I make a
+   * request", and this covers "what should I tell the user about it".
+   */
+  async inspectToken(): Promise<OAuthTokenInspection> {
+    const state = await this.loadState();
+    switch (state.kind) {
+      case 'missing':
+        return { state: 'missing' };
+      case 'revoked':
+        return { state: 'revoked', scope: state.scope, tokenType: state.tokenType };
+      case 'valid':
+        return {
+          state: 'valid',
+          expiresAt: state.token.expiresAt,
+          hasRefreshToken: state.token.refreshToken.length > 0,
+          tokenType: state.token.tokenType,
+          scope: state.token.scope,
+        };
+    }
   }
 
   async logout(): Promise<void> {

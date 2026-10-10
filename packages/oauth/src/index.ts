@@ -13,6 +13,7 @@ export type {
   DeviceHeaders,
   OAuthFlowConfig,
   OAuthStorageBackend,
+  OAuthTokenInspection,
   TokenInfo,
   TokenInfoWire,
 } from './types';

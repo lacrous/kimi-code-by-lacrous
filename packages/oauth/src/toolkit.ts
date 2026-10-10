@@ -43,7 +43,7 @@ import {
 } from './managed-usage';
 import { OAuthManager, type LoginOptions, type OAuthManagerOptions } from './oauth-manager';
 import { FileTokenStorage, type TokenStorage } from './storage';
-import type { OAuthFlowConfig } from './types';
+import type { OAuthFlowConfig, OAuthTokenInspection } from './types';
 
 export interface BearerTokenProvider {
   getAccessToken(options?: { readonly force?: boolean | undefined }): Promise<string>;
@@ -264,6 +264,22 @@ export class KimiOAuthToolkit<TConfig = unknown> {
     const oauthHost = this.oauthHostFor(oauthRef);
     const oauthKey = oauthRef?.key ?? this.defaultOAuthKey(undefined, oauthHost);
     return this.managerFor(name, oauthKey, oauthHost).getCachedAccessToken();
+  }
+
+  /**
+   * Offline counterpart to `status`, which answers "is there a usable token"
+   * with a yes/no. This answers "what should a human be told about it" — the
+   * same three states `classifyToken` already distinguishes, plus expiry, and
+   * never a token value.
+   */
+  async inspectCachedToken(
+    providerName?: string,
+    oauthRef?: KimiOAuthTokenRef,
+  ): Promise<OAuthTokenInspection> {
+    const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
+    const oauthHost = this.oauthHostFor(oauthRef);
+    const oauthKey = oauthRef?.key ?? this.defaultOAuthKey(undefined, oauthHost);
+    return this.managerFor(name, oauthKey, oauthHost).inspectToken();
   }
 
   tokenProvider(

@@ -22,6 +22,26 @@ export interface TokenInfo {
   readonly expiresIn: number;
 }
 
+/**
+ * What storage holds for a provider, minus the credentials themselves.
+ *
+ * `revoked` stays distinct from `missing` on purpose: a tombstone means the
+ * provider was logged in once and its refresh token was later rejected, so the
+ * fix is re-authenticating. A surface that collapses the two tells a user who
+ * has never signed in to go and sign in, which is harmless, but tells a user
+ * whose token was revoked that nothing was ever configured — the actual loss.
+ */
+export type OAuthTokenInspection =
+  | { readonly state: 'missing' }
+  | { readonly state: 'revoked'; readonly scope: string; readonly tokenType: string }
+  | {
+      readonly state: 'valid';
+      readonly expiresAt: number;
+      readonly hasRefreshToken: boolean;
+      readonly tokenType: string;
+      readonly scope: string;
+    };
+
 /** RFC 8628 §3.2 device authorization response. */
 export interface DeviceAuthorization {
   readonly userCode: string;

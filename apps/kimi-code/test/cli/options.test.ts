@@ -590,6 +590,7 @@ describe('CLI options parsing', () => {
         'server',
         'rc',
         'login',
+        'auth',
         'doctor',
         'vis',
         'install-desktop',

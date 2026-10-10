@@ -35,6 +35,7 @@ import {
   type KimiConfig,
   type KimiHarness,
   type OAuthRef,
+  providerEndpointEnvNames,
 } from '@moonshot-ai/kimi-code-sdk';
 import type { Command } from 'commander';
 
@@ -770,7 +771,7 @@ function finishProviderTest(deps: ProviderDeps, results: ProviderTestStageResult
   deps.exit(1);
 }
 
-type TestCredential =
+export type TestCredential =
   | { readonly present: true; readonly detail: string; readonly secret: string | undefined }
   | { readonly present: false; readonly detail: string };
 
@@ -779,12 +780,18 @@ type TestCredential =
  * terminal. The declared-vs-resolved distinction is the whole point of the
  * stage: an `api_key_env` naming a variable nobody exported looks configured
  * and fails only at the first real request.
+ *
+ * `mode` picks whether an OAuth token may be refreshed over the network.
+ * `resolve` is for a probe that is about to spend the credential anyway;
+ * `cached` is for read-only reporting, which must not turn an inspection into
+ * a token rotation or a network round-trip.
  */
-async function resolveTestCredential(
+export async function resolveTestCredential(
   deps: ProviderDeps,
   harness: KimiHarness,
   providerId: string,
   provider: KimiConfig['providers'][string],
+  mode: 'resolve' | 'cached' = 'resolve',
 ): Promise<TestCredential> {
   const declared = declaredProviderCredential(provider, providerId);
   switch (declared.kind) {
@@ -808,9 +815,10 @@ async function resolveTestCredential(
 
   if (provider.oauth !== undefined) {
     try {
-      const token = await harness.auth
-        .resolveOAuthTokenProvider(providerId, provider.oauth)
-        .getAccessToken();
+      const token =
+        mode === 'cached'
+          ? await harness.auth.getCachedAccessToken(providerId, provider.oauth)
+          : await harness.auth.resolveOAuthTokenProvider(providerId, provider.oauth).getAccessToken();
       return typeof token === 'string' && token.length > 0
         ? { present: true, detail: `PRESENT (oauth token "${provider.oauth.key}")`, secret: token }
         : {
@@ -831,9 +839,18 @@ async function resolveTestCredential(
     return { present: true, detail: 'PRESENT (auth_scheme = "none", no credential sent)', secret: undefined };
   }
 
+  // A record with no credential field at all is not necessarily broken: the
+  // engine still falls back to the wire type's vendor variable at request
+  // time. Reporting a bare MISSING for a provider whose `$OPENAI_API_KEY` is
+  // set would be the worst kind of wrong — it sends the user to re-enter a key
+  // they already exported — so the fallback is named instead.
+  const { apiKeyEnvName } = providerEndpointEnvNames(provider.type, deps.env);
   return {
     present: false,
-    detail: 'MISSING (no api_key, api_key_env or oauth in config.toml)',
+    detail:
+      'MISSING (no api_key, api_key_env or oauth in config.toml' +
+      `${apiKeyEnvName === undefined ? '' : `; the wire "${provider.type}" falls back to $${apiKeyEnvName}`}` +
+      ')',
   };
 }
 

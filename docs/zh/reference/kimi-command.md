@@ -133,7 +133,7 @@ kimi -p "List changed files" --output-format stream-json
 
 ## 子命令
 
-`kimi` 提供以下子命令：`login`（非交互式登录）、`acp`（ACP IDE 模式）、`web`（前台运行本地 REST/WebSocket/web 服务并打开 web UI）、`doctor`（校验配置文件）、`export`（导出会话）、`migrate`（迁移旧版数据）、`upgrade`（检查更新）、`provider`（管理供应商）。
+`kimi` 提供以下子命令：`login`（非交互式登录）、`acp`（ACP IDE 模式）、`web`（前台运行本地 REST/WebSocket/web 服务并打开 web UI）、`doctor`（校验配置文件）、`export`（导出会话）、`migrate`（迁移旧版数据）、`upgrade`（检查更新）、`provider`（管理供应商）、`auth`（查看与管理供应商凭证）。
 
 ### `kimi login`
 
@@ -501,6 +501,95 @@ kimi provider models my-gateway --refresh
 ```sh
 kimi provider test cline
 kimi provider test my-gateway --model my-gateway/auto --timeout 30000
+```
+
+### `kimi auth`
+
+查看供应商是否已登录，并管理其背后的凭证。[`kimi provider auth`](#kimi-provider-auth-providerid) 面向脚本——它把密钥作为参数传入；本命令面向交互——它一眼列出每个供应商的状态，并以隐藏输入的方式在终端中读取新密钥，因此密钥不会进入 shell 历史、进程表，也不会出现在终端回滚截图里。
+
+`list` 和 `status` 不会访问供应商，只读取本地已缓存的内容，因此能立即回答"我登录了吗"，也不会顺带轮换 token。
+
+每个命令会报告五种状态之一：
+
+| 状态 | 含义 |
+| --- | --- |
+| `authenticated` | 存在可用凭证 |
+| `expired` | OAuth token 已过期，运行时会在下一次请求时刷新它 |
+| `revoked` | 已保存的 token 被吊销，必须重新登录 |
+| `missing` | 该供应商没有配置凭证 |
+| `none` | 该供应商根本不发送凭证（`auth_scheme = "none"`） |
+
+`expired` 和 `revoked` 与 `missing` 有意区分：前两者说明凭证存在、需要重新登录，而 `missing` 可能只是一个从未配过密钥的供应商。
+
+#### `kimi auth list`
+
+为每个已配置的供应商打印一行：状态，以及解释凭证如何解析的详细信息——例如由哪个环境变量提供，或该 token 可刷新。没有配置凭证的供应商同样会列出，因此这张表是完整清单，而不只是可用项。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `--json` | 以 JSON 输出这些行 |
+
+```sh
+kimi auth list
+kimi auth list --json
+```
+
+#### `kimi auth status <providerId>`
+
+详细报告单个供应商，在已保存的凭证带有过期时间时一并显示。供应商 id 不存在时退出码为 `1`，并列出当前已配置的 id。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要查看的供应商 |
+| `--json` | 以 JSON 输出该行 |
+
+```sh
+kimi auth status cline
+kimi auth status my-gateway --json
+```
+
+#### `kimi auth login <providerId>`
+
+以隐藏输入的方式提示输入 API key 并保存到 `config.toml`。按 `Ctrl-C` 或 `Ctrl-D` 取消，不会写入任何内容。在此保存密钥会移除同一供应商上的 `api_key_env` 引用，因为运行时不允许同一个供应商同时带有两者。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要保存密钥的供应商 |
+
+本命令用于以静态 API key 认证的供应商。配置为 OAuth 的供应商会被拒绝，并提示改用 [`kimi login`](#kimi-login)，因为它驱动的是 device-code 流程；在此为该供应商登录会按一个身份提供方完成认证，却写入另一个的配置。
+
+```sh
+kimi auth login my-gateway
+```
+
+::: tip
+由于密钥是从终端读取而不是来自命令行，在共享机器上 `kimi auth login` 是更安全的保存方式。[`kimi provider auth`](#kimi-provider-auth-providerid) 会把密钥写进你的 shell 历史。
+:::
+
+#### `kimi auth logout <providerId>`
+
+清除供应商已保存的凭证，同时保留供应商本身。对于 OAuth 供应商，已缓存的 token 也会一并删除。
+
+退出登录和删除是两回事：本命令移除凭证，但保留供应商的模型别名，也绝不触碰 `default_model`。要彻底移除供应商，请使用 [`kimi provider remove`](#kimi-provider-remove-providerid)。若供应商没有可清除的凭证，会如实报告并以 `0` 退出。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要退出登录的供应商 |
+
+```sh
+kimi auth logout my-gateway
+```
+
+#### `kimi auth refresh <providerId>`
+
+立即强制轮换 OAuth token，而不是等到下一次请求才发现 token 已过期。可刷新的凭证在日常使用中会自动轮换；本命令用于在真正需要之前先确认轮换是否正常。使用静态 API key 的供应商会以退出码 `1` 说明原因，因为这类密钥不会过期。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要刷新的供应商 |
+
+```sh
+kimi auth refresh cline
 ```
 
 ## 下一步
