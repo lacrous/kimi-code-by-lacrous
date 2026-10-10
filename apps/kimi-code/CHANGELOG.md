@@ -1,5 +1,21 @@
 # @lacrous/kimi-code
 
+## 3.4.0
+
+### Minor Changes
+
+- [`103638e1`](https://github.com/lacrous/kimi-code-by-lacrous/commit/103638e14e8232b3964300d7a2d0a77804848d60) Thanks [@lacrous](https://github.com/lacrous)! - Support the `bearer` `auth_scheme`, and allow setting `auth_scheme` on providers using the Anthropic protocol.
+
+- [`5437738e`](https://github.com/lacrous/kimi-code-by-lacrous/commit/5437738e7f431375a9a9652fc766368b9c04818a) Thanks [@lacrous](https://github.com/lacrous)! - Reject provider base URLs that embed a username or password, and allow plain `http://` for private-network hosts so self-hosted gateways on a LAN address keep working.
+
+- [`3cf35e8d`](https://github.com/lacrous/kimi-code-by-lacrous/commit/3cf35e8dc2ca1f075dd7cc4dbb2d4ba6c9eb491d) Thanks [@lacrous](https://github.com/lacrous)! - Mask API keys and tokens pasted into log messages and log context instead of writing them to the log file.
+
+- [`3cf35e8d`](https://github.com/lacrous/kimi-code-by-lacrous/commit/3cf35e8dc2ca1f075dd7cc4dbb2d4ba6c9eb491d) Thanks [@lacrous](https://github.com/lacrous)! - Redact API keys, tokens and cookies from cloud telemetry, not just local logs.
+
+- [`ce7dc110`](https://github.com/lacrous/kimi-code-by-lacrous/commit/ce7dc110b0397d76261cfac6eacf0172fc8d3a1d) Thanks [@lacrous](https://github.com/lacrous)! - Add an `e` shortcut to the `/provider` manager that replaces the API key of the highlighted provider without echoing it, and refreshes that provider's models with the new key.
+
+- [`870cab36`](https://github.com/lacrous/kimi-code-by-lacrous/commit/870cab3627a416fa334d114ef4f92a3c6180db89) Thanks [@lacrous](https://github.com/lacrous)! - Add `kimi provider add-manual`, `add-builtin`, `edit` and `test` to the shell command for diagnosing a configured provider without exposing its key.
+
 ## 3.3.1
 
 ### Patch Changes
