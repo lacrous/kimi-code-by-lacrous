@@ -441,6 +441,28 @@ kimi provider add-builtin cline --api-key YOUR_API_KEY
 kimi provider edit my-gateway --base-url https://gateway.example.com/v2
 ```
 
+#### `kimi provider auth <providerId>`
+
+只替换供应商的凭证，不改动协议和端点。它相当于把 `kimi provider edit` 收窄到密钥一项，因此密钥过期或轮换时用它更稳妥：它无法把端点改到别处，并且默认会重新读取模型列表，密钥被拒会立刻暴露出来。
+
+| 参数 / 选项 | 说明 |
+| --- | --- |
+| `<providerId>` | 要替换密钥的供应商 id |
+| `--api-key <key>` | 新的 API key。未传时回退到 `KIMI_REGISTRY_API_KEY` |
+| `--api-key-env <VAR>` | 从该环境变量读取密钥，而不是直接存进配置 |
+| `--no-refresh` | 写入密钥但不重新读取模型列表 |
+
+同时传入 `--api-key` 和 `--api-key-env` 会报错：两者只会应用其中一个。切换写法时会从配置里删掉另一种，因为运行时不接受同时带有两者的记录。
+
+```sh
+kimi provider auth my-gateway --api-key-env MY_GATEWAY_KEY
+kimi provider auth my-gateway --api-key YOUR_API_KEY
+```
+
+::: warning 注意
+在命令行上传入的 `--api-key` 会留在 shell 历史里，并且在命令运行期间对机器上的其他进程可见。如果这台机器不是你独占的，请优先使用 `--api-key-env`，或在环境变量里设置 `KIMI_REGISTRY_API_KEY`。
+:::
+
 #### `kimi provider test <providerId>`
 
 在不发送真实会话的前提下诊断一个已配置的供应商。探测分五个阶段并逐项打印：配置、凭证解析、端点可达性、模型发现，以及对某个模型别名发起的最小请求。未授权、禁止访问、未找到、被限流、超时和响应格式错误会被分别报出。API key 绝不会被打印，即使上游错误信息里把它原样回显也会先脱敏。

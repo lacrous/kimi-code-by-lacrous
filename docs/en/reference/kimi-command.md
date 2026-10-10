@@ -441,6 +441,28 @@ Change the fields of a provider that already exists. Only the flags you pass are
 kimi provider edit my-gateway --base-url https://gateway.example.com/v2
 ```
 
+#### `kimi provider auth <providerId>`
+
+Replace a provider's credential without touching its protocol or endpoint. This is `kimi provider edit` narrowed to the key, which makes it the safe command to reach for when a key expires or rotates: it cannot repoint the endpoint, and its model list is re-read by default so a rejected key is reported right away.
+
+| Parameter / Option | Description |
+| --- | --- |
+| `<providerId>` | Provider whose key to replace |
+| `--api-key <key>` | New API key. Falls back to `KIMI_REGISTRY_API_KEY` |
+| `--api-key-env <VAR>` | Read the key from this environment variable instead of storing it |
+| `--no-refresh` | Store the key without re-reading the model list |
+
+Passing `--api-key` and `--api-key-env` together is an error: exactly one of the two is applied. Switching between them removes the other from the config, because the runtime rejects a record carrying both.
+
+```sh
+kimi provider auth my-gateway --api-key-env MY_GATEWAY_KEY
+kimi provider auth my-gateway --api-key YOUR_API_KEY
+```
+
+::: warning
+An `--api-key` value passed on the command line is visible in your shell history and to other processes on the machine while the command runs. Prefer `--api-key-env`, or set `KIMI_REGISTRY_API_KEY` in the environment, when the machine is not yours alone.
+:::
+
 #### `kimi provider test <providerId>`
 
 Diagnose a configured provider without sending a real conversation. The probe runs five stages and prints each one: configuration, credential resolution, endpoint reachability, model discovery, and a minimal request against one model alias. Unauthorized, forbidden, not-found, rate-limited, timed-out and malformed-response outcomes are reported distinctly. The API key is never printed, including when an upstream error message quotes it back.

@@ -111,6 +111,12 @@ interface AddManualOptions {
   readonly displayName?: string;
 }
 
+/** The flags `edit` honours, in the order they are listed back to the user. */
+const EDIT_FLAG_NAMES = ['--type', '--base-url', '--api-key', '--api-key-env'] as const;
+
+/** `auth` is `edit` narrowed to the credential pair. */
+const AUTH_FLAG_NAMES = ['--api-key', '--api-key-env'] as const;
+
 export interface EditOptions {
   readonly type?: string;
   readonly baseUrl?: string;
@@ -118,6 +124,13 @@ export interface EditOptions {
   readonly apiKeyEnv?: string;
   /** Re-read the model list after applying the change. Defaults to true. */
   readonly refresh?: boolean;
+  /**
+   * Narrows the hint printed when the patch comes out empty. `auth` reuses this
+   * handler but accepts only the credential pair, and must not point at
+   * `--type` / `--base-url`: commander rejects those on its command line, so
+   * the hint would send the user to an error instead of a fix.
+   */
+  readonly acceptedFlags?: readonly string[];
 }
 
 /**
@@ -189,9 +202,10 @@ export async function handleProviderEdit(
   }
 
   if (Object.keys(patch).length === 0) {
-    deps.stderr.write(
-      'Nothing to change. Pass --type, --base-url, --api-key or --api-key-env.\n',
-    );
+    const flags = opts.acceptedFlags ?? EDIT_FLAG_NAMES;
+    const accepted =
+      flags.length > 1 ? `${flags.slice(0, -1).join(', ')} or ${flags.at(-1)}` : (flags[0] ?? '');
+    deps.stderr.write(`Nothing to change. Pass ${accepted}.\n`);
     deps.exit(1);
   }
 
@@ -1590,6 +1604,37 @@ export function registerProviderCommand(parent: Command, deps?: Partial<Provider
             apiKey: options.apiKey,
             apiKeyEnv: options.apiKeyEnv,
             refresh: options.refresh !== false,
+          }),
+        );
+      },
+    );
+
+  provider
+    .command('auth <providerId>')
+    .description(
+      'Replace a provider\'s credential, leaving its protocol and endpoint untouched.',
+    )
+    .option('--api-key <key>', 'New API key. Falls back to KIMI_REGISTRY_API_KEY.')
+    .option('--api-key-env <VAR>', 'Read the key from this environment variable instead of storing it.')
+    // Same reason as `edit`: `--no-refresh` only writes `refresh` when the
+    // flag is present, so a default here would silently skip discovery.
+    .option('--no-refresh', 'Store the key without re-reading the model list.')
+    .action(
+      async (
+        providerId: string,
+        options: {
+          apiKey?: string;
+          apiKeyEnv?: string;
+          refresh?: boolean;
+        },
+      ) => {
+        const resolved = resolveDeps(deps);
+        await runAction(resolved, () =>
+          handleProviderEdit(resolved, providerId, {
+            apiKey: options.apiKey,
+            apiKeyEnv: options.apiKeyEnv,
+            refresh: options.refresh !== false,
+            acceptedFlags: AUTH_FLAG_NAMES,
           }),
         );
       },

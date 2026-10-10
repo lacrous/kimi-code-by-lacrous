@@ -1066,6 +1066,121 @@ describe('kimi provider edit', () => {
   });
 });
 
+describe('kimi provider auth', () => {
+  const EXISTING = {
+    providers: {
+      mygw: { type: 'openai', baseUrl: 'https://old.example.test/v1', apiKey: 'sk-old' },
+    },
+    models: { 'mygw/m1': { provider: 'mygw', model: 'm1', maxContextSize: 1024 } },
+    defaultModel: 'mygw/m1',
+  } as unknown as KimiConfig;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubModels(ids: readonly string[]): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ data: ids.map((id) => ({ id })) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+  }
+
+  async function runAuth(
+    argv: readonly string[],
+  ): Promise<ReturnType<typeof makeDeps> & { current: () => KimiConfig }> {
+    const { harness, current } = makeHarness(EXISTING);
+    const made = makeDeps(harness);
+    const root = new Command('provider');
+    registerProviderCommand(root, made.deps);
+    await tryRun(() => root.parseAsync(['provider', 'auth', ...argv], { from: 'user' }));
+    return { ...made, current };
+  }
+
+  // A handler that reports its own failure calls `deps.exit(1)`. Under the real
+  // `process.exit` that ends the process there; the test double throws instead,
+  // so `runAction`'s boundary catches the throw and exits a second time. Only
+  // the final code is what the shell would see, and both are 1.
+  function failed(exitCodes: readonly number[]): boolean {
+    return exitCodes.length > 0 && exitCodes.every((code) => code === 1);
+  }
+
+  it('replaces the key and leaves the protocol and endpoint alone', async () => {
+    stubModels(['m1']);
+    const { current, stdout, stderr, exitCodes } = await runAuth(['mygw', '--api-key', 'sk-new']);
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['mygw']).toMatchObject({
+      type: 'openai',
+      baseUrl: 'https://old.example.test/v1',
+      apiKey: 'sk-new',
+    });
+    expect(stdout.join('')).toContain('Refreshing models');
+    // The key must never be echoed back, only the field name that changed.
+    expect(`${stdout.join('')}${stderr.join('')}`).not.toContain('sk-new');
+  });
+
+  it('stores an env reference and drops the inline key', async () => {
+    const { current, exitCodes } = await runAuth(['mygw', '--api-key-env', 'MYGW_KEY', '--no-refresh']);
+
+    expect(exitCodes).toEqual([]);
+    expect(current().providers['mygw']).toMatchObject({ apiKeyEnv: 'MYGW_KEY' });
+    // The runtime rejects a record carrying both, so the old key must be gone.
+    expect(current().providers['mygw']).not.toHaveProperty('apiKey');
+  });
+
+  it('refuses both an inline key and an env var', async () => {
+    const { current, stderr, exitCodes } = await runAuth([
+      'mygw',
+      '--api-key',
+      'sk-new',
+      '--api-key-env',
+      'MYGW_KEY',
+    ]);
+
+    expect(failed(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('Pass either --api-key or --api-key-env, not both.');
+    expect(current().providers['mygw']).toMatchObject({ apiKey: 'sk-old' });
+  });
+
+  it('points at the credential flags, not the endpoint flags, when nothing is passed', async () => {
+    const { stderr, exitCodes } = await runAuth(['mygw']);
+
+    expect(failed(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('Nothing to change. Pass --api-key or --api-key-env.');
+    expect(stderr.join('')).not.toContain('--base-url');
+  });
+
+  it('exits 1 when the provider id does not exist', async () => {
+    const { stderr, exitCodes } = await runAuth(['nope', '--api-key', 'sk-new']);
+
+    expect(failed(exitCodes)).toBe(true);
+    expect(stderr.join('')).toContain('not found');
+    expect(stderr.join('')).toContain('mygw');
+  });
+
+  it('skips the refresh with --no-refresh and does not touch the endpoint', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { current, stdout, exitCodes } = await runAuth([
+      'mygw',
+      '--api-key',
+      'sk-new',
+      '--no-refresh',
+    ]);
+
+    expect(exitCodes).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(stdout.join('')).toContain('Skipped model refresh');
+    expect(current().providers['mygw']).toMatchObject({ apiKey: 'sk-new' });
+  });
+});
+
 describe('kimi provider remove', () => {
   it('removes a provider and reports success', async () => {
     const initial: KimiConfig = {
